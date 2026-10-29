@@ -1,0 +1,935 @@
+[gd_scene load_steps=14 format=3 uid="uid://c112233445566"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/map_generator.gd" id="2_map"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="3_player"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="4_hud"]
+[ext_resource type="Script" path="res://scripts/minimap.gd" id="5_minimap"]
+[ext_resource type="Shader" path="res://shaders/horror_vignette.gdshader" id="6_vig"]
+[ext_resource type="Shader" path="res://shaders/crt.gdshader" id="7_crt"]
+[ext_resource type="FontFile" uid="uid://bkwfmd2ej6v6s" path="res://fonts/Creepster-Regular.ttf" id="8_creepster"]
+[ext_resource type="FontFile" uid="uid://cnp0b4pdcas0t" path="res://fonts/ShareTechMono-Regular.ttf" id="9_techmono"]
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 1
+background_color = Color(0.02, 0.03, 0.05, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.14, 0.17, 0.25, 1)
+ambient_light_energy = 0.28
+tonemap_mode = 3
+fog_enabled = true
+fog_light_color = Color(0.02, 0.03, 0.06, 1)
+fog_density = 0.005
+fog_depth_begin = 4.0
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.4
+height = 1.75
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_vig"]
+shader = ExtResource("6_vig")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_crt"]
+shader = ExtResource("7_crt")
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="MapGenerator" type="Node3D" parent="."]
+script = ExtResource("2_map")
+
+[node name="Entities" type="Node3D" parent="."]
+
+[node name="Player" type="CharacterBody3D" parent="." groups=["player"]]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("3_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.88, 0)
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Head" type="Node3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+
+[node name="Camera3D" type="Camera3D" parent="Player/Head"]
+current = true
+near = 0.05
+far = 100.0
+
+[node name="Flashlight" type="SpotLight3D" parent="Player/Head/Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 0.9962, 0.08715, 0, -0.08715, 0.9962, 0.08, -0.04, -0.2)
+light_color = Color(1.0, 0.95, 0.86, 1)
+light_energy = 3.2
+spot_range = 24.0
+spot_angle = 38.0
+spot_attenuation = 1.0
+
+[node name="FillLight" type="OmniLight3D" parent="Player/Head/Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, -0.15)
+light_color = Color(1.0, 0.94, 0.82, 1)
+light_energy = 0.35
+omni_range = 5.0
+omni_attenuation = 1.0
+
+[node name="InteractionRay" type="RayCast3D" parent="Player/Head/Camera3D"]
+target_position = Vector3(0, 0, -2.8)
+collision_mask = 4
+collide_with_areas = true
+collide_with_bodies = false
+
+[node name="HUD" type="CanvasLayer" parent="."]
+process_mode = 3
+script = ExtResource("4_hud")
+
+[node name="HorrorVignette" type="ColorRect" parent="HUD"]
+material = SubResource("ShaderMaterial_vig")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CRTOverlay" type="ColorRect" parent="HUD"]
+material = SubResource("ShaderMaterial_crt")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MainMenu" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Background" type="ColorRect" parent="HUD/MainMenu"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.015, 0.02, 0.03, 0.96)
+
+[node name="CenterBox" type="VBoxContainer" parent="HUD/MainMenu"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -220.0
+offset_right = 280.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="TitleBox" type="VBoxContainer" parent="HUD/MainMenu/CenterBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="Label" parent="HUD/MainMenu/CenterBox/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.15, 0.85, 0.45, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "AETHELGARD BIOTECH CORP • DEEP STORAGE 4"
+horizontal_alignment = 1
+
+[node name="Title" type="Label" parent="HUD/MainMenu/CenterBox/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.15, 0.2, 1)
+theme_override_colors/font_shadow_color = Color(0.4, 0.0, 0.05, 0.8)
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 38
+text = "THE COMPANY DOES NOT LET YOU LEAVE"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="HUD/MainMenu/CenterBox/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.72, 0.8, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+text = "NIGHT JANITORIAL PROTOCOL • SURVIVAL CONTINGENCY"
+horizontal_alignment = 1
+
+[node name="ButtonBox" type="VBoxContainer" parent="HUD/MainMenu/CenterBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 12
+
+[node name="BtnStart" type="Button" parent="HUD/MainMenu/CenterBox/ButtonBox"]
+custom_minimum_size = Vector2(260, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_colors/font_hover_color = Color(0.2, 0.95, 0.4, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 15
+text = "▶  START SHIFT"
+
+[node name="BtnOptions" type="Button" parent="HUD/MainMenu/CenterBox/ButtonBox"]
+custom_minimum_size = Vector2(260, 40)
+layout_mode = 2
+theme_override_colors/font_hover_color = Color(0.3, 0.85, 0.95, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 14
+text = "⚙  OPTIONS"
+
+[node name="BtnLeaderboard" type="Button" parent="HUD/MainMenu/CenterBox/ButtonBox"]
+custom_minimum_size = Vector2(260, 40)
+layout_mode = 2
+theme_override_colors/font_hover_color = Color(0.95, 0.85, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 14
+text = "☰  LEADERBOARD"
+
+[node name="BtnExit" type="Button" parent="HUD/MainMenu/CenterBox/ButtonBox"]
+custom_minimum_size = Vector2(260, 40)
+layout_mode = 2
+theme_override_colors/font_hover_color = Color(0.95, 0.2, 0.25, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 14
+text = "✕  EXIT GAME"
+
+[node name="FooterText" type="Label" parent="HUD/MainMenu"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -36.0
+offset_right = 300.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.35, 0.42, 0.5, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "SECURE LOGON ESTABLISHED • ALL SHIFTS MANDATORY"
+horizontal_alignment = 1
+
+[node name="OptionsScreen" type="PanelContainer" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -180.0
+offset_right = 220.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/OptionsScreen"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 24
+text = "SYSTEM SETTINGS"
+horizontal_alignment = 1
+
+[node name="SensRow" type="HBoxContainer" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/OptionsScreen/VBox/SensRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "Mouse Sensitivity"
+
+[node name="SensSlider" type="HSlider" parent="HUD/OptionsScreen/VBox/SensRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.001
+max_value = 0.008
+step = 0.0005
+value = 0.0024
+
+[node name="FovRow" type="HBoxContainer" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/OptionsScreen/VBox/FovRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "Field Of View"
+
+[node name="FovSlider" type="HSlider" parent="HUD/OptionsScreen/VBox/FovRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 60.0
+max_value = 100.0
+value = 75.0
+
+[node name="SfxRow" type="HBoxContainer" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/OptionsScreen/VBox/SfxRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "SFX Volume"
+
+[node name="SfxSlider" type="HSlider" parent="HUD/OptionsScreen/VBox/SfxRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 0.8
+
+[node name="MusicRow" type="HBoxContainer" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/OptionsScreen/VBox/MusicRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "Music / Ambience"
+
+[node name="MusicSlider" type="HSlider" parent="HUD/OptionsScreen/VBox/MusicRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 0.7
+
+[node name="FlashRow" type="HBoxContainer" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/OptionsScreen/VBox/FlashRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "Torch Intensity"
+
+[node name="FlashSlider" type="HSlider" parent="HUD/OptionsScreen/VBox/FlashRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 6.0
+value = 4.8
+
+[node name="BtnBack" type="Button" parent="HUD/OptionsScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "◀  BACK"
+
+[node name="LeaderboardScreen" type="PanelContainer" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -180.0
+offset_right = 220.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/LeaderboardScreen"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="HUD/LeaderboardScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 24
+text = "JANITORIAL ROSTER"
+horizontal_alignment = 1
+
+[node name="RecordList" type="Label" parent="HUD/LeaderboardScreen/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "1. S. Vance    - $850  (SURVIVED NIGHT 3)
+2. M. Kovacs   - $350  (TERMINATED)
+3. R. Thorne   - $100  (MISSING IN ACTION)
+4. YOU         - $0    (PROBATIONARY)"
+
+[node name="BtnBack" type="Button" parent="HUD/LeaderboardScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "◀  BACK"
+
+[node name="PauseMenu" type="PanelContainer" parent="HUD"]
+visible = false
+process_mode = 3
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -120.0
+offset_right = 160.0
+offset_bottom = 120.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/PauseMenu"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="HUD/PauseMenu/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 22
+text = "SHIFT PAUSED"
+horizontal_alignment = 1
+
+[node name="BtnResume" type="Button" parent="HUD/PauseMenu/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "RESUME SHIFT"
+
+[node name="BtnOptions" type="Button" parent="HUD/PauseMenu/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "OPTIONS"
+
+[node name="BtnQuit" type="Button" parent="HUD/PauseMenu/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "ABANDON SHIFT"
+
+[node name="DevPanel" type="PanelContainer" parent="HUD"]
+visible = false
+process_mode = 3
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -310.0
+offset_top = 60.0
+offset_right = -15.0
+offset_bottom = 360.0
+grow_horizontal = 0
+
+[node name="VBox" type="VBoxContainer" parent="HUD/DevPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="HUD/DevPanel/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.96, 0.62, 0.07, 1)
+text = "DEBUG / TEST (F9)"
+
+[node name="CloseBtn" type="Button" parent="HUD/DevPanel/VBox/Header"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = " ✕ "
+
+[node name="ChkGod" type="CheckBox" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "God mode (bất tử + stamina ∞)"
+
+[node name="ChkFreeze" type="CheckBox" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "Freeze entity (không dí)"
+
+[node name="BtnForceChase" type="Button" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "Force Start Chase"
+
+[node name="BtnCompleteObj" type="Button" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "Complete Work Objectives"
+
+[node name="BtnTpExit" type="Button" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "TP to Exit"
+
+[node name="BtnSkipDay" type="Button" parent="HUD/DevPanel/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "Skip → Victory Screen"
+
+[node name="GameHud" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopLeftPanel" type="PanelContainer" parent="HUD/GameHud"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 340.0
+offset_bottom = 155.0
+
+[node name="VBox" type="VBoxContainer" parent="HUD/GameHud/TopLeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleRow" type="HBoxContainer" parent="HUD/GameHud/TopLeftPanel/VBox"]
+layout_mode = 2
+
+[node name="Dot" type="ColorRect" parent="HUD/GameHud/TopLeftPanel/VBox/TitleRow"]
+custom_minimum_size = Vector2(10, 10)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(0.2, 0.85, 0.35, 1)
+
+[node name="FacilityTitle" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 12
+text = "FACILITY: SUB-LEVEL 4 [STABLE]"
+
+[node name="ObjectiveList" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.75, 0.82, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "• Mop Toxic Spills: 0 / 3
+• Science Terminals Checked: 0 / 2
+• Relics / Artifacts Recovered: 0
+• Shift Wages Earned: $0"
+
+[node name="DistWarning" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.9, 0.4, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 10
+text = "STATUS: WORK SHIFT IN PROGRESS"
+
+[node name="TopRightBox" type="PanelContainer" parent="HUD/GameHud"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 95.0
+grow_horizontal = 0
+
+[node name="VBox" type="VBoxContainer" parent="HUD/GameHud/TopRightBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="HUD/GameHud/TopRightBox/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.2, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "⚠ HUNTER DISTANCE"
+
+[node name="DistanceValue" type="Label" parent="HUD/GameHud/TopRightBox/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 16
+text = "200 METERS"
+
+[node name="ChaseBar" type="ProgressBar" parent="HUD/GameHud/TopRightBox/VBox"]
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+max_value = 200.0
+value = 200.0
+show_percentage = false
+
+[node name="BottomLeft" type="VBoxContainer" parent="HUD/GameHud"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = -120.0
+offset_right = 220.0
+offset_bottom = -20.0
+grow_vertical = 0
+theme_override_constants/separation = 6
+
+[node name="StaminaBox" type="HBoxContainer" parent="HUD/GameHud/BottomLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/StaminaBox"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "STAMINA"
+
+[node name="Bar" type="ProgressBar" parent="HUD/GameHud/BottomLeft/StaminaBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+value = 100.0
+show_percentage = false
+
+[node name="MopBox" type="HBoxContainer" parent="HUD/GameHud/BottomLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/MopBox"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "MOP"
+
+[node name="Bar" type="ProgressBar" parent="HUD/GameHud/BottomLeft/MopBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+value = 100.0
+show_percentage = false
+
+[node name="FlashlightBox" type="HBoxContainer" parent="HUD/GameHud/BottomLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/FlashlightBox"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "TORCH [F]"
+
+[node name="Status" type="Label" parent="HUD/GameHud/BottomLeft/FlashlightBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.9, 0.4, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "ON"
+
+[node name="Reticle" type="Label" parent="HUD/GameHud"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -10.0
+offset_top = -14.0
+offset_right = 10.0
+offset_bottom = 14.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 20
+text = "•"
+horizontal_alignment = 1
+
+[node name="InteractionLabel" type="Label" parent="HUD/GameHud"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = 25.0
+offset_right = 150.0
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+text = "[E] Interact"
+horizontal_alignment = 1
+
+[node name="Minimap" type="Control" parent="HUD/GameHud"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -160.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("5_minimap")
+
+[node name="CutscenePlayer" type="Control" parent="HUD"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CutsceneCanvas" type="Control" parent="HUD/CutscenePlayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TopLetterbox" type="ColorRect" parent="HUD/CutscenePlayer"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 60.0
+grow_horizontal = 2
+color = Color(0, 0, 0, 1)
+mouse_filter = 2
+
+[node name="BottomLetterbox" type="ColorRect" parent="HUD/CutscenePlayer"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+color = Color(0, 0, 0, 1)
+mouse_filter = 2
+
+[node name="BottomBar" type="PanelContainer" parent="HUD/CutscenePlayer"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 50.0
+offset_top = -170.0
+offset_right = -50.0
+offset_bottom = -65.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="BarLayout" type="HBoxContainer" parent="HUD/CutscenePlayer/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CutscenePlayer/BottomBar/BarLayout"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Speaker" type="Label" parent="HUD/CutscenePlayer/BottomBar/BarLayout/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.75, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+text = "NARRATOR"
+mouse_filter = 2
+
+[node name="Text" type="RichTextLabel" parent="HUD/CutscenePlayer/BottomBar/BarLayout/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_fonts/normal_font = ExtResource("9_techmono")
+theme_override_font_sizes/normal_font_size = 14
+text = "Cutscene text..."
+mouse_filter = 2
+
+[node name="HBoxBtn" type="VBoxContainer" parent="HUD/CutscenePlayer/BottomBar/BarLayout"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 8
+
+[node name="SlideCounter" type="Label" parent="HUD/CutscenePlayer/BottomBar/BarLayout/HBoxBtn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.75, 0.3, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "SLIDE 1 / 4"
+horizontal_alignment = 1
+
+[node name="BtnRow" type="HBoxContainer" parent="HUD/CutscenePlayer/BottomBar/BarLayout/HBoxBtn"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NextBtn" type="Button" parent="HUD/CutscenePlayer/BottomBar/BarLayout/HBoxBtn/BtnRow"]
+custom_minimum_size = Vector2(95, 30)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "NEXT ▶"
+
+[node name="SkipBtn" type="Button" parent="HUD/CutscenePlayer/BottomBar/BarLayout/HBoxBtn/BtnRow"]
+custom_minimum_size = Vector2(80, 30)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "SKIP ▶▶"
+
+[node name="NotePopup" type="PanelContainer" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -160.0
+offset_right = 220.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/NotePopup"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="HUD/NotePopup/VBox"]
+layout_mode = 2
+
+[node name="Tag" type="Label" parent="HUD/NotePopup/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.2, 0.2, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "SECURITY CLASSIFIED"
+
+[node name="CloseBtn" type="Button" parent="HUD/NotePopup/VBox/Header"]
+custom_minimum_size = Vector2(28, 24)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "✕"
+
+[node name="Title" type="Label" parent="HUD/NotePopup/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 20
+text = "LOG TITLE"
+
+[node name="Body" type="RichTextLabel" parent="HUD/NotePopup/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_fonts/normal_font = ExtResource("9_techmono")
+theme_override_font_sizes/normal_font_size = 13
+text = "Note text goes here..."
+
+[node name="CloseNotice" type="Label" parent="HUD/NotePopup/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.55, 0.6, 1)
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 11
+text = "[PRESS E OR ESC TO CLOSE]"
+horizontal_alignment = 1
+
+[node name="GameOverScreen" type="PanelContainer" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -140.0
+offset_right = 220.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/GameOverScreen"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HUD/GameOverScreen/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.1, 0.15, 1)
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 36
+text = "HARVESTED"
+horizontal_alignment = 1
+
+[node name="DeathMessage" type="Label" parent="HUD/GameOverScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+text = "The specimen caught you."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="RetryBtn" type="Button" parent="HUD/GameOverScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "TRY AGAIN"
+
+[node name="VictoryScreen" type="PanelContainer" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -140.0
+offset_right = 220.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/VictoryScreen"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HUD/VictoryScreen/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.95, 0.4, 1)
+theme_override_fonts/font = ExtResource("8_creepster")
+theme_override_font_sizes/font_size = 36
+text = "ESCAPED"
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="HUD/VictoryScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+theme_override_font_sizes/font_size = 13
+text = "You survived the shift and fled into the night."
+horizontal_alignment = 1
+
+[node name="ExitBtn" type="Button" parent="HUD/VictoryScreen/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("9_techmono")
+text = "FINISH"
