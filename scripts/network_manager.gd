@@ -46,6 +46,7 @@ var relay_server_url: String = "wss://the-company-does-not-let-you-leave.onrende
 var _relay_ws: WebSocketPeer = null
 var _browser_ws: WebSocketPeer = null
 var _browser_poll_timer: float = 0.0
+var _browser_initial_sent: bool = false
 var _relay_process_pid: int = -1
 
 # Room Code & Info
@@ -143,11 +144,15 @@ func _process(delta: float) -> void:
 			_browser_ws.poll()
 			var b_state = _browser_ws.get_ready_state()
 			if b_state == WebSocketPeer.STATE_OPEN:
+				if not _browser_initial_sent:
+					_browser_ws.send_text(JSON.stringify({"cmd": "list_rooms"}))
+					_browser_initial_sent = true
 				while _browser_ws.get_available_packet_count() > 0:
 					var b_pkt = _browser_ws.get_packet().get_string_from_utf8()
 					_handle_browser_packet(b_pkt)
 			elif b_state == WebSocketPeer.STATE_CLOSED:
 				_browser_ws = null
+				_browser_initial_sent = false
 
 		# Periodic query refresh (every 1.5 seconds)
 		if _browser_poll_timer >= 1.5:
@@ -284,9 +289,9 @@ func _start_relay_host(room_name: String, max_p: int) -> Error:
 		"is_host": true
 	}
 
-	# Wait briefly for open state and send create_room
+	# Wait up to 6.0s for open state and send create_room
 	var start_t = Time.get_ticks_msec()
-	while Time.get_ticks_msec() - start_t < 1200:
+	while Time.get_ticks_msec() - start_t < 6000:
 		_relay_ws.poll()
 		if _relay_ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 			var req = JSON.stringify({
@@ -312,16 +317,15 @@ func join_by_room_code(code_str: String) -> Error:
 	if clean_code == "":
 		return ERR_INVALID_PARAMETER
 
-	# If it's a Relay room code (e.g. "AGY-..." or standard code)
-	if clean_code.begins_with("AGY-") or (not "." in clean_code and clean_code.length() >= 6):
+	# Prioritize Relay room join unless it contains IP dots
+	if not "." in clean_code:
 		return _join_relay_room(clean_code)
 
-	# If it's an IP:Port or encoded IP code, parse and join via direct ENet
+	# Direct IP:Port fallback
 	var parsed = parse_room_input(clean_code)
 	if not parsed.is_empty():
 		return join_room(parsed.get("ip", "127.0.0.1"), parsed.get("port", DEFAULT_PORT))
 
-	# Default try relay with the code
 	return _join_relay_room(clean_code)
 
 func _join_relay_room(code_str: String) -> Error:
@@ -339,10 +343,10 @@ func _join_relay_room(code_str: String) -> Error:
 	is_multiplayer_active = true
 	current_room_code = code_str
 
-	# Wait briefly for connection and send join_room request
+	# Wait up to 6.0s for connection and send join_room request
 	var start_t = Time.get_ticks_msec()
 	var sent = false
-	while Time.get_ticks_msec() - start_t < 2500:
+	while Time.get_ticks_msec() - start_t < 6000:
 		_relay_ws.poll()
 		if _relay_ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 			if not sent:
@@ -353,7 +357,7 @@ func _join_relay_room(code_str: String) -> Error:
 				})
 				_relay_ws.send_text(req)
 				sent = true
-			if _relay_ws.get_available_packet_count() > 0:
+			while _relay_ws.get_available_packet_count() > 0:
 				var pkt = _relay_ws.get_packet().get_string_from_utf8()
 				_handle_relay_packet(pkt)
 				if not connected_players.is_empty():
@@ -828,7 +832,18 @@ func _handle_browser_packet(pkt_str: String) -> void:
 		return
 	if packet.get("type") == "room_list":
 		var rooms_arr = packet.get("rooms", [])
-		var changed = false
+		var current_relay_codes = []
+		for r in rooms_arr:
+			current_relay_codes.append(str(r.get("code", "")))
+		var keys_to_remove = []
+		for k in _discovered_rooms.keys():
+			if k.begins_with("relay_"):
+				var c = k.substr(6)
+				if not c in current_relay_codes:
+					keys_to_remove.append(k)
+		for k in keys_to_remove:
+			_discovered_rooms.erase(k)
+
 		for r in rooms_arr:
 			var code = str(r.get("code", ""))
 			if code != "":
@@ -842,9 +857,7 @@ func _handle_browser_packet(pkt_str: String) -> void:
 					"last_seen": Time.get_ticks_msec() / 1000.0,
 					"is_relay": true
 				}
-				changed = true
-		if changed:
-			room_list_updated.emit(_discovered_rooms.values())
+		room_list_updated.emit(_discovered_rooms.values())
 
 func find_lan_rooms(timeout: float = 0.5, on_found: Callable = Callable()) -> void:
 	if not _is_browsing:

@@ -210,15 +210,26 @@ class WSConnection {
       }
 
       case 'join_room': {
-        const inputCode = (packet.room_code || '').trim().toUpperCase();
+        let rawCode = (packet.room_code || '').trim().toUpperCase();
         this.playerName = (packet.player_name || 'Janitor #' + Math.floor(Math.random() * 90 + 10)).trim().substring(0, 24);
 
-        if (!rooms.has(inputCode)) {
+        const cleanInput = rawCode.replace(/[\s\-_]/g, '');
+        let targetRoom = null;
+        for (const [code, r] of rooms.entries()) {
+          const cleanCode = code.replace(/[\s\-_]/g, '');
+          if (cleanCode === cleanInput || cleanCode.endsWith(cleanInput) || cleanInput.endsWith(cleanCode)) {
+            targetRoom = r;
+            break;
+          }
+        }
+
+        if (!targetRoom) {
           this.sendJSON({ type: 'join_error', message: 'Mã phòng không tồn tại hoặc đã đóng!' });
           return;
         }
 
-        const room = rooms.get(inputCode);
+        const room = targetRoom;
+        const inputCode = room.code;
         if (room.clients.size >= room.maxPlayers) {
           this.sendJSON({ type: 'join_error', message: 'Phòng đã đầy người chơi!' });
           return;
