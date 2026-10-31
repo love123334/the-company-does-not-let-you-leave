@@ -42,7 +42,7 @@ var _connect_timeout_timer: SceneTreeTimer = null
 # WebSocket Relay Mode
 var is_relay_mode: bool = false
 var local_peer_id: int = 1
-var relay_server_url: String = "ws://127.0.0.1:8912"
+var relay_server_url: String = "wss://the-company-does-not-let-you-leave.onrender.com"
 var _relay_ws: WebSocketPeer = null
 var _browser_ws: WebSocketPeer = null
 var _browser_poll_timer: float = 0.0
@@ -100,6 +100,12 @@ func _load_relay_config() -> void:
 			var data = JSON.parse_string(txt)
 			if data is Dictionary and data.has("relay_url"):
 				relay_server_url = str(data["relay_url"]).strip_edges()
+
+func _connect_ws_peer(ws: WebSocketPeer, url: String) -> Error:
+	if url.begins_with("wss://"):
+		var tls = TLSOptions.client_unsafe()
+		return ws.connect_to_url(url, tls)
+	return ws.connect_to_url(url)
 
 func get_local_peer_id() -> int:
 	if is_relay_mode:
@@ -254,7 +260,7 @@ func _start_relay_host(room_name: String, max_p: int) -> Error:
 	_ensure_local_relay_server()
 
 	_relay_ws = WebSocketPeer.new()
-	var err = _relay_ws.connect_to_url(relay_server_url)
+	var err = _connect_ws_peer(_relay_ws, relay_server_url)
 	if err != OK:
 		_relay_ws = null
 		return err
@@ -323,7 +329,7 @@ func _join_relay_room(code_str: String) -> Error:
 	leave_room()
 
 	_relay_ws = WebSocketPeer.new()
-	var err = _relay_ws.connect_to_url(relay_server_url)
+	var err = _connect_ws_peer(_relay_ws, relay_server_url)
 	if err != OK:
 		_relay_ws = null
 		return err
@@ -808,7 +814,7 @@ func stop_room_browser() -> void:
 func _query_relay_browser() -> void:
 	if not _browser_ws or _browser_ws.get_ready_state() == WebSocketPeer.STATE_CLOSED:
 		_browser_ws = WebSocketPeer.new()
-		var err = _browser_ws.connect_to_url(relay_server_url)
+		var err = _connect_ws_peer(_browser_ws, relay_server_url)
 		if err != OK:
 			_browser_ws = null
 			return
