@@ -53,7 +53,10 @@ func setup_peer(id: int, p_name: String, start_pos: Vector3) -> void:
 func update_state(state: Dictionary) -> void:
 	if is_dead:
 		return
-	target_pos = state.get("pos", target_pos)
+	var new_pos = state.get("pos", target_pos)
+	if target_pos == Vector3.ZERO or global_position.distance_squared_to(new_pos) > 36.0:
+		global_position = new_pos
+	target_pos = new_pos
 	target_rot_y = state.get("rot_y", target_rot_y)
 	target_cam_x = state.get("cam_x", target_cam_x)
 	is_moving = state.get("moving", false)
@@ -80,11 +83,16 @@ func mark_peer_dead() -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
-	global_position = global_position.lerp(target_pos, min(1.0, delta * 15.0))
-	rotation.y = lerp_angle(rotation.y, target_rot_y, min(1.0, delta * 15.0))
+	var dist_to_target = global_position.distance_to(target_pos)
+	if dist_to_target > 6.0:
+		global_position = target_pos
+	else:
+		global_position = global_position.lerp(target_pos, min(1.0, delta * 18.0))
+	rotation.y = lerp_angle(rotation.y, target_rot_y, min(1.0, delta * 18.0))
 
 	# Humanoid Procedural Animation
-	if is_moving:
+	var is_anim_moving = is_moving or (dist_to_target > 0.05)
+	if is_anim_moving:
 		var speed_mult = 13.5 if is_sprinting else 8.5
 		walk_cycle += delta * speed_mult
 		

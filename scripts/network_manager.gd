@@ -8,7 +8,7 @@ signal server_disconnected_signal()
 signal game_started_signal(day: int, map_idx: int, task_mult: float, supplies_mult: float)
 signal remote_player_state_updated(id: int, state: Dictionary)
 signal remote_player_action_received(id: int, action: String, data: Dictionary)
-signal remote_spill_cleaned(spill_pos: Vector3, peer_id: int)
+signal remote_spill_cleaned(spill_pos: Vector3, peer_id: int, is_blood: bool)
 signal remote_terminal_checked(term_pos: Vector3, peer_id: int)
 signal remote_keycard_collected(keycard_idx: int, peer_id: int)
 signal remote_chase_triggered()
@@ -580,10 +580,11 @@ func _handle_relayed_game_data(from_id: int, data: Dictionary) -> void:
 			var p_arr = data.get("pos", [0, 0, 0])
 			var s_pos = Vector3(float(p_arr[0]), float(p_arr[1]), float(p_arr[2]))
 			var cleaner_id = int(data.get("id", from_id))
+			var is_blood = data.get("is_blood", false) == true
 			if connected_players.has(cleaner_id):
 				connected_players[cleaner_id]["tasks"] += 1
 				connected_players[cleaner_id]["wages"] += 35
-			remote_spill_cleaned.emit(s_pos, cleaner_id)
+			remote_spill_cleaned.emit(s_pos, cleaner_id, is_blood)
 
 		"verify_terminal":
 			var p_arr = data.get("pos", [0, 0, 0])
@@ -689,11 +690,11 @@ func send_chat_message(sender: String, message: String, is_system: bool = false)
 	else:
 		chat_message_received.emit(sender, message, is_system)
 
-func clean_spill(pos: Vector3, cleaner_id: int) -> void:
+func clean_spill(pos: Vector3, cleaner_id: int, is_blood: bool = false) -> void:
 	if is_relay_mode:
-		_send_relay("clean_spill", {"pos": [pos.x, pos.y, pos.z], "id": cleaner_id}, "all")
+		_send_relay("clean_spill", {"pos": [pos.x, pos.y, pos.z], "id": cleaner_id, "is_blood": is_blood}, "all")
 	elif peer and multiplayer.multiplayer_peer:
-		rpc("rpc_clean_spill", pos, cleaner_id)
+		rpc("rpc_clean_spill", pos, cleaner_id, is_blood)
 
 func verify_terminal(pos: Vector3, checker_id: int) -> void:
 	if is_relay_mode:
@@ -987,12 +988,12 @@ func rpc_sync_transform(pos: Vector3, rot_y: float, cam_x: float, moving: bool, 
 	remote_player_state_updated.emit(sender_id, state)
 
 @rpc("any_peer", "call_local", "reliable")
-func rpc_clean_spill(spill_pos: Vector3, cleaner_id: int) -> void:
+func rpc_clean_spill(spill_pos: Vector3, cleaner_id: int, is_blood: bool = false) -> void:
 	var cid = cleaner_id_fallback(cleaner_id)
 	if connected_players.has(cid):
 		connected_players[cid]["tasks"] += 1
 		connected_players[cid]["wages"] += 35
-	remote_spill_cleaned.emit(spill_pos, cleaner_id)
+	remote_spill_cleaned.emit(spill_pos, cleaner_id, is_blood)
 
 @rpc("any_peer", "call_local", "reliable")
 func rpc_verify_terminal(term_pos: Vector3, checker_id: int) -> void:
@@ -1009,7 +1010,7 @@ func rpc_collect_keycard(idx: int, collector_id: int) -> void:
 		connected_players[cid]["wages"] += 25
 	remote_keycard_collected.emit(idx, collector_id)
 
-@rpc("call_local", "reliable")
+@rpc("any_peer", "call_local", "reliable")
 func rpc_notify_chase_trigger() -> void:
 	remote_chase_triggered.emit()
 

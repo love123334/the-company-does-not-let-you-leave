@@ -418,7 +418,7 @@ func _process(delta: float) -> void:
 		mp_net_sync_timer += delta
 		if mp_net_sync_timer >= 0.05:
 			mp_net_sync_timer = 0.0
-			var moving = player.velocity.length_squared() > 0.05
+			var moving = player.velocity.length_squared() > 0.05 or (player.get("last_frame_move_dist") != null and float(player.get("last_frame_move_dist")) > 0.001)
 			var sprint = Input.is_action_pressed("sprint")
 			var flash = player.flashlight.visible if is_instance_valid(player.flashlight) else true
 			var w_type = player.get("current_weapon_idx") if "current_weapon_idx" in player else 0
@@ -431,8 +431,9 @@ func _process(delta: float) -> void:
 	if is_spectating:
 		_process_spectator_camera(delta)
 
-	# Anti-Camping / Prolonged Inaction Penalty Check (25s standing completely still in MP without doing tasks)
-	if is_instance_valid(player) and not player.is_hiding and not is_game_over and not is_spectating:
+	# Anti-Camping Penalty Check (25s standing completely still in MP during Chase Phase only)
+	# During Work Shift (dọn dẹp), standing still is completely permitted and will NEVER trigger penalties.
+	if current_phase == Phase.CHASE and is_instance_valid(player) and not player.is_hiding and not is_game_over and not is_spectating:
 		var is_busy = (player.get("is_scrubbing") == true) or (player.get("is_defending") == true) or (player.velocity.length_squared() >= 0.05)
 		if not is_busy and NetworkManager.is_multiplayer_active:
 			player_still_timer += delta
@@ -441,6 +442,8 @@ func _process(delta: float) -> void:
 				_trigger_camping_penalty(player.global_position)
 		else:
 			player_still_timer = 0.0
+	else:
+		player_still_timer = 0.0
 
 	if override_cooldown > 0.0:
 		override_cooldown = max(0.0, override_cooldown - delta)
@@ -999,7 +1002,7 @@ func _on_spill_cleaned(is_blood: bool = false) -> void:
 		wages += 15
 		hud.show_toast("TOXIC SPILL MOPPED (%d / %d)" % [spills_cleaned, spills_total], Color(0.4, 1.0, 0.4))
 	if NetworkManager.is_multiplayer_active:
-		NetworkManager.clean_spill(player.global_position, NetworkManager.get_local_peer_id())
+		NetworkManager.clean_spill(player.global_position, NetworkManager.get_local_peer_id(), is_blood)
 	_update_hud_objectives()
 	_check_work_complete()
 	_refresh_minimap()
@@ -1079,8 +1082,7 @@ func _check_work_complete() -> void:
 		if current_phase == Phase.WORK:
 			if NetworkManager.is_multiplayer_active:
 				NetworkManager.notify_chase_trigger()
-			else:
-				_trigger_chase_phase()
+			_trigger_chase_phase()
 
 func _on_secret_corridor_state_changed(inside: bool) -> void:
 	if inside:
@@ -1102,6 +1104,8 @@ func _on_pedestal_activated(ped_id: int, total_activated: int) -> void:
 		_update_hud_objectives()
 
 func _trigger_chase_phase() -> void:
+	if current_phase == Phase.CHASE:
+		return
 	current_phase = Phase.CHASE
 	if map_gen.has_method("set_keycards_visible"):
 		map_gen.set_keycards_visible(keycards_collected < keycards_total)
@@ -1235,7 +1239,7 @@ func _on_exit_reached() -> void:
 	SoundEffects.play(SoundEffects.snd_pickup, 4.0)
 
 	if NetworkManager.is_multiplayer_active:
-		var pid = multiplayer.get_unique_id()
+		var pid = NetworkManager.get_local_peer_id()
 		if NetworkManager.connected_players.has(pid):
 			NetworkManager.connected_players[pid]["wages"] = wages
 		if NetworkManager.is_host:
@@ -1976,7 +1980,7 @@ func _spawn_remote_player_puppets() -> void:
 			p_node.queue_free()
 	remote_players.clear()
 
-	var my_id = multiplayer.get_unique_id()
+	var my_id = NetworkManager.get_local_peer_id()
 	for pid in NetworkManager.connected_players.keys():
 		if pid == my_id:
 			continue
@@ -1990,6 +1994,14 @@ func _spawn_remote_player_puppets() -> void:
 		remote_players[pid] = r_node
 
 func _on_remote_player_state_updated(pid: int, state: Dictionary) -> void:
+	var my_id = NetworkManager.get_local_peer_id()
+	if pid == my_id:
+		if remote_players.has(my_id):
+			if is_instance_valid(remote_players[my_id]):
+				remote_players[my_id].queue_free()
+			remote_players.erase(my_id)
+		return
+
 	if not remote_players.has(pid):
 		var p_info = NetworkManager.connected_players.get(pid, {})
 		var p_name = p_info.get("name", "Janitor #%d" % pid)
@@ -2007,12 +2019,18 @@ func _on_remote_player_action_received(pid: int, action: String, data: Dictionar
 	if is_instance_valid(p_puppet) and p_puppet.has_method("play_action_animation"):
 		p_puppet.play_action_animation(action, data)
 
-func _on_remote_spill_cleaned(_spill_pos: Vector3, peer_id: int) -> void:
-	spills_cleaned += 1
+func _on_remote_spill_cleaned(_spill_pos: Vector3, peer_id: int, is_blood: bool = false) -> void:
+	if is_blood:
+		blood_cleaned += 1
+	else:
+		spills_cleaned += 1
 	var cleaner_name = "Another Janitor"
 	if NetworkManager.connected_players.has(peer_id):
 		cleaner_name = NetworkManager.connected_players[peer_id].get("name", "Janitor")
-	hud.show_toast("✔ %s sanitized a chemical hazard!" % cleaner_name, Color(0.3, 0.9, 0.7))
+	if is_blood:
+		hud.show_toast("✔ %s đã lau sạch một vết máu!" % cleaner_name, Color(0.85, 0.4, 0.5))
+	else:
+		hud.show_toast("✔ %s sanitized a chemical hazard!" % cleaner_name, Color(0.3, 0.9, 0.7))
 	_update_hud_objectives()
 	_check_work_complete()
 
@@ -2035,7 +2053,7 @@ func _on_remote_keycard_collected(idx: int, peer_id: int) -> void:
 
 func _on_remote_chase_triggered() -> void:
 	if current_phase == Phase.WORK:
-		hud.show_toast("⚠ A JANITOR COMPLETED THEIR QUOTA — CONTAINMENT BREACH TRIGGERED!", Color(1.0, 0.2, 0.2), 6.0)
+		hud.show_toast("⚠ BÁO ĐỘNG! MỘT NHÂN VIÊN ĐÃ HOÀN THÀNH CHỈ TIÊU — CẢ PHÒNG BƯỚC VÀO CHASE!", Color(1.0, 0.2, 0.2), 6.0)
 		_trigger_chase_phase()
 
 func _on_leaderboard_summary_displayed(stats: Array, is_final_night: bool) -> void:
