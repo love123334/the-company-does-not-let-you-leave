@@ -424,7 +424,7 @@ func _process(delta: float) -> void:
 			var w_type = player.get("current_weapon_idx") if "current_weapon_idx" in player else 0
 			var guard = player.get("is_defending") if "is_defending" in player else false
 			var cam_rot_x = player.camera.rotation.x if is_instance_valid(player.camera) else 0.0
-			var in_lock = bool(player.get("is_hiding"))
+			var in_lock = (player.get("is_hiding") == true)
 			NetworkManager.update_local_player_state(player.global_position, moving, in_lock)
 			NetworkManager.sync_player_transform(player.global_position, player.rotation.y, cam_rot_x, moving, sprint, flash, w_type, guard, in_lock)
 
@@ -433,7 +433,7 @@ func _process(delta: float) -> void:
 
 	# Anti-Camping / Prolonged Inaction Penalty Check (25s standing completely still in MP without doing tasks)
 	if is_instance_valid(player) and not player.is_hiding and not is_game_over and not is_spectating:
-		var is_busy = bool(player.get("is_scrubbing")) or bool(player.get("is_defending")) or (player.velocity.length_squared() >= 0.05)
+		var is_busy = (player.get("is_scrubbing") == true) or (player.get("is_defending") == true) or (player.velocity.length_squared() >= 0.05)
 		if not is_busy and NetworkManager.is_multiplayer_active:
 			player_still_timer += delta
 			if player_still_timer >= 25.0:
@@ -486,7 +486,7 @@ func _on_player_step_taken() -> void:
 		return
 	if dev_freeze_entity:
 		return
-	if player and bool(player.get("in_secret_corridor")):
+	if player and (player.get("in_secret_corridor") == true):
 		return
 	_modify_chase_steps(-1)
 
@@ -530,7 +530,7 @@ func _on_player_mop_strike() -> void:
 	var best_cloak: Node3D = null
 	var best_cloak_dist: float = 3.3
 	for clk in cloaks:
-		if is_instance_valid(clk) and bool(clk.get("active")):
+		if is_instance_valid(clk) and (clk.get("active") == true):
 			var d_clk = Vector2(player.global_position.x - clk.global_position.x, player.global_position.z - clk.global_position.z).length()
 			if d_clk < best_cloak_dist:
 				best_cloak_dist = d_clk
@@ -634,7 +634,7 @@ func _handle_baton_attack() -> void:
 	var best_cloak: Node3D = null
 	var best_cloak_dist: float = 1.65
 	for clk in cloaks:
-		if is_instance_valid(clk) and bool(clk.get("active")):
+		if is_instance_valid(clk) and (clk.get("active") == true):
 			var d_clk = Vector2(player.global_position.x - clk.global_position.x, player.global_position.z - clk.global_position.z).length()
 			if d_clk < best_cloak_dist:
 				best_cloak_dist = d_clk
@@ -681,7 +681,7 @@ func _handle_baton_attack() -> void:
 
 	# Hangers within 1.8m
 	for h in hangers:
-		if is_instance_valid(h) and bool(h.get("active")) and h.get("state") != "STUNNED":
+		if is_instance_valid(h) and (h.get("active") == true) and h.get("state") != "STUNNED":
 			var dh_flat = Vector2(player.global_position.x - h.global_position.x, player.global_position.z - h.global_position.z).length()
 			if dh_flat <= 1.8:
 				if h.has_method("stun"):
@@ -730,7 +730,7 @@ func _handle_taser_attack() -> void:
 
 	# Check Statues
 	for s in statues:
-		if is_instance_valid(s) and bool(s.get("active")):
+		if is_instance_valid(s) and (s.get("active") == true):
 			var to_m = s.global_position + Vector3(0, 1.2, 0) - cam_pos
 			var dist = to_m.length()
 			if dist <= best_dist and dist > 0.1:
@@ -751,7 +751,7 @@ func _handle_taser_attack() -> void:
 
 	# Check Cloaks
 	for clk in cloaks:
-		if is_instance_valid(clk) and bool(clk.get("active")):
+		if is_instance_valid(clk) and (clk.get("active") == true):
 			var to_m = clk.global_position + Vector3(0, 1.2, 0) - cam_pos
 			var dist = to_m.length()
 			if dist <= best_dist and dist > 0.1:
@@ -762,7 +762,7 @@ func _handle_taser_attack() -> void:
 
 	# Check Hangers
 	for h in hangers:
-		if is_instance_valid(h) and bool(h.get("active")):
+		if is_instance_valid(h) and (h.get("active") == true):
 			var to_m = h.global_position + Vector3(0, 1.2, 0) - cam_pos
 			var dist = to_m.length()
 			if dist <= best_dist and dist > 0.1:
@@ -794,7 +794,7 @@ func _handle_taser_attack() -> void:
 					best_type = "crawler"
 
 	# Check Light Eater (Floor 2)
-	if is_instance_valid(light_eater) and bool(light_eater.get("active")):
+	if is_instance_valid(light_eater) and (light_eater.get("active") == true):
 		var to_m = light_eater.global_position + Vector3(0, 1.0, 0) - cam_pos
 		var dist = to_m.length()
 		if dist <= best_dist and dist > 0.1:
@@ -1392,7 +1392,7 @@ func _resume_from_pause() -> void:
 
 # Meta-Horror Quit Escalation ported from HTML handleQuitAttempt() & performEntityIntrusion() (lines 4318-4372)
 func _handle_quit_attempt() -> void:
-	if is_game_over or (hud.game_over_screen and hud.game_over_screen.visible) or (player and bool(player.get("is_dead"))) or current_phase != Phase.CHASE:
+	if is_game_over or (hud.game_over_screen and hud.game_over_screen.visible) or (player and (player.get("is_dead") == true)) or current_phase != Phase.CHASE:
 		_quit_to_menu()
 		return
 
@@ -2095,7 +2095,7 @@ func _get_living_spectate_targets() -> Array:
 	var list: Array = []
 	for pid in remote_players.keys():
 		var r_node = remote_players[pid]
-		if is_instance_valid(r_node) and not bool(r_node.get("is_dead")):
+		if is_instance_valid(r_node) and r_node.get("is_dead") != true:
 			list.append({"node": r_node, "name": r_node.player_name})
 	return list
 

@@ -2798,7 +2798,7 @@ func update_mp_lobby(players: Dictionary, is_host: bool) -> void:
 		row.add_child(name_lbl)
 
 		var ready_lbl = Label.new()
-		var rdy = bool(p.get("ready", false))
+		var rdy = (p.get("ready", false) == true)
 		ready_lbl.text = "[READY]" if rdy else "[PREPARING]"
 		ready_lbl.add_theme_font_override("font", font_mono)
 		ready_lbl.add_theme_font_size_override("font_size", 12)
@@ -2980,7 +2980,7 @@ func _on_chat_text_submitted(txt: String) -> void:
 	var msg = txt.strip_edges()
 	if msg != "":
 		var net_mgr = get_node_or_null("/root/NetworkManager")
-		if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+		if net_mgr and net_mgr.get("is_multiplayer_active") == true:
 			var sender = str(net_mgr.get("local_player_name"))
 			if net_mgr.has_method("send_chat_message"):
 				net_mgr.send_chat_message(sender, msg, false)

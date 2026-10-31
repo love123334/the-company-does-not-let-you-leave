@@ -371,7 +371,7 @@ func _physics_process(delta: float) -> void:
 			_check_first_sighting_scare()
 
 	# Check if player is inside or touching this Cloak
-	if player and is_instance_valid(player) and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")):
+	if player and is_instance_valid(player) and player.get("in_death_sequence") != true and player.get("is_dead") != true:
 		var p_diff = player.global_position - global_position
 		p_diff.y = 0.0
 		var p_dist = p_diff.length()
@@ -381,7 +381,7 @@ func _physics_process(delta: float) -> void:
 				_trigger_strangle_kill()
 				return
 		else:
-			if p_dist <= HIDE_RADIUS and abs(player.global_position.y - global_position.y) < 2.3 and not bool(player.get("is_hiding")):
+			if p_dist <= HIDE_RADIUS and abs(player.global_position.y - global_position.y) < 2.3 and player.get("is_hiding") != true:
 				if player.has_method("notify_inside_cloak"):
 					player.notify_inside_cloak(self, delta)
 
@@ -497,7 +497,7 @@ func _repel_nearby_monsters(delta: float) -> void:
 		for m in get_tree().get_nodes_in_group(g_name):
 			if not is_instance_valid(m) or not (m is CharacterBody3D):
 				continue
-			if not bool(m.get("active")):
+			if m.get("active") != true:
 				continue
 			var diff: Vector3 = m.global_position - global_position
 			diff.y = 0.0
@@ -547,7 +547,7 @@ func _check_first_sighting_scare() -> void:
 
 # Death 1: Player stayed inside the Cloak too long -> gradual asphyxiation, blurred vision, rapid gasping -> death
 func trigger_suffocation_kill() -> void:
-	if is_killing or (player and bool(player.get("god_mode"))):
+	if is_killing or (player and player.get("god_mode") == true):
 		return
 	is_killing = true
 	kill_mode = "suffocate"
@@ -564,7 +564,7 @@ func trigger_suffocation_kill() -> void:
 
 # Death 2: Player hit the Cloak -> cloth coils tightly around player's body and strangles their neck to death
 func _trigger_strangle_kill() -> void:
-	if is_killing or (player and bool(player.get("god_mode"))):
+	if is_killing or (player and player.get("god_mode") == true):
 		return
 	is_killing = true
 	is_hostile = true

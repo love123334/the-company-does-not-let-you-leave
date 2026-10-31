@@ -236,7 +236,7 @@ func _physics_process(delta: float) -> void:
 	var dist = dir.length()
 
 	# Deep stone scraping across the floor to alert player to Observer presence nearby
-	if dist < 14.0 and not is_killing and not (player and bool(player.get("is_dead"))):
+	if dist < 14.0 and not is_killing and not (player and (player.get("is_dead") == true)):
 		presence_sound_timer -= delta
 		if presence_sound_timer <= 0.0:
 			presence_sound_timer = randf_range(5.5, 9.5)
@@ -245,7 +245,7 @@ func _physics_process(delta: float) -> void:
 
 	var observed := _is_observed_by_player()
 	if not observed:
-		var is_scrubbing_work = player and bool(player.get("is_scrubbing"))
+		var is_scrubbing_work = player != null and (player.get("is_scrubbing") == true)
 		if dist < 1.65 and abs(player.global_position.y - global_position.y) < 2.2:
 			if is_scrubbing_work:
 				# Protected while scrubbing floor spills: warn player with dragging sound instead of unfair instant death
@@ -269,7 +269,7 @@ func _physics_process(delta: float) -> void:
 		var mp_active: bool = false
 		var mp_freeze: bool = false
 		var net_mgr = get_node_or_null("/root/NetworkManager")
-		if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+		if net_mgr and (net_mgr.get("is_multiplayer_active") == true):
 			mp_active = true
 			if net_mgr.has_method("is_any_player_in_locker") and net_mgr.is_any_player_in_locker():
 				mp_freeze = false
@@ -345,7 +345,7 @@ func _is_observed_by_player() -> bool:
 
 	# 1. Check local player camera
 	var cam = get_viewport().get_camera_3d()
-	if cam and (player and not bool(player.get("is_dead"))):
+	if cam and (player and (player.get("is_dead") != true)):
 		var to_statue = statue_head_pos - cam.global_position
 		var dist = to_statue.length()
 		if dist <= 24.0:
@@ -358,7 +358,7 @@ func _is_observed_by_player() -> bool:
 
 	# 2. Check remote players in multiplayer (quantum observation by teammates)
 	for r_node in get_tree().get_nodes_in_group("remote_players"):
-		if is_instance_valid(r_node) and not bool(r_node.get("is_dead")):
+		if is_instance_valid(r_node) and (r_node.get("is_dead") != true):
 			var r_head = r_node.global_position + Vector3(0, 1.55, 0)
 			var to_st = statue_head_pos - r_head
 			var r_dist = to_st.length()

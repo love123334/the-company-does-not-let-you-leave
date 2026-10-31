@@ -104,7 +104,8 @@ func _load_relay_config() -> void:
 
 func _connect_ws_peer(ws: WebSocketPeer, url: String) -> Error:
 	if url.begins_with("wss://"):
-		var tls = TLSOptions.client_unsafe()
+		var domain = url.trim_prefix("wss://").split("/")[0].split(":")[0]
+		var tls = TLSOptions.client(null, domain)
 		return ws.connect_to_url(url, tls)
 	return ws.connect_to_url(url)
 
@@ -465,8 +466,8 @@ func _handle_relay_packet(raw_str: String) -> void:
 					"stuns": 0,
 					"kills": 0,
 					"deaths": 0,
-					"ready": bool(p.get("ready", pid == 1)),
-					"is_host": bool(p.get("is_host", pid == 1))
+					"ready": p.get("ready", pid == 1) == true,
+					"is_host": p.get("is_host", pid == 1) == true
 				}
 			var r_info = {
 				"name": current_room_name,
@@ -526,12 +527,12 @@ func _handle_relayed_game_data(from_id: int, data: Dictionary) -> void:
 			var pos = Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
 			var rot_y = float(data.get("rot", 0.0))
 			var cam_x = float(data.get("cam", 0.0))
-			var moving = bool(data.get("mov", false))
-			var sprint = bool(data.get("spr", false))
-			var flash = bool(data.get("fl", false))
+			var moving = data.get("mov", false) == true
+			var sprint = data.get("spr", false) == true
+			var flash = data.get("fl", false) == true
 			var weapon = int(data.get("w", 0))
-			var guard = bool(data.get("g", false))
-			var in_lock = bool(data.get("lock", false))
+			var guard = data.get("g", false) == true
+			var in_lock = data.get("lock", false) == true
 
 			if connected_players.has(from_id):
 				connected_players[from_id]["pos"] = pos
@@ -552,11 +553,11 @@ func _handle_relayed_game_data(from_id: int, data: Dictionary) -> void:
 			remote_player_state_updated.emit(from_id, state)
 
 		"chat":
-			chat_message_received.emit(str(data.get("sender", "Janitor")), str(data.get("msg", "")), bool(data.get("sys", false)))
+			chat_message_received.emit(str(data.get("sender", "Janitor")), str(data.get("msg", "")), data.get("sys", false) == true)
 
 		"ready_state":
 			var pid = int(data.get("id", from_id))
-			var is_r = bool(data.get("ready", false))
+			var is_r = data.get("ready", false) == true
 			if connected_players.has(pid):
 				connected_players[pid]["ready"] = is_r
 				lobby_updated.emit(connected_players)
@@ -646,7 +647,7 @@ func _handle_relayed_game_data(from_id: int, data: Dictionary) -> void:
 
 		"show_leaderboard":
 			var stats = data.get("stats", [])
-			var is_final = bool(data.get("is_final", false))
+			var is_final = data.get("is_final", false) == true
 			leaderboard_summary_displayed.emit(stats, is_final)
 
 # Helper to send payload to relay server

@@ -118,7 +118,7 @@ func stun(duration: float) -> void:
 	if is_dead or latched:
 		return
 
-	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+	if player and (player.get("is_dead") == true or player.get("in_death_sequence") == true):
 		velocity = Vector3.ZERO
 		return
 	stun_timer = max(stun_timer, duration)
@@ -249,7 +249,7 @@ func _physics_process(delta: float) -> void:
 	if is_dead or latched:
 		return
 
-	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+	if player and (player.get("is_dead") == true or player.get("in_death_sequence") == true):
 		velocity = Vector3.ZERO
 		return
 
@@ -320,7 +320,7 @@ func _physics_process(delta: float) -> void:
 			afraid_of_hunter = true
 
 	# Attack Player if already within strike distance (unless fleeing in terror from Hunter!)
-	if not afraid_of_hunter and not player_hiding and not bool(player.get("in_bite_sequence")) and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")) and p_floor == 1 and dist_to_player <= kill_distance and attack_cooldown <= 0.0:
+	if not afraid_of_hunter and not player_hiding and player.get("in_bite_sequence") != true and player.get("in_death_sequence") != true and player.get("is_dead") != true and p_floor == 1 and dist_to_player <= kill_distance and attack_cooldown <= 0.0:
 		if player.has_method("is_baton_defending") and player.is_baton_defending():
 			if player.is_baton_parrying():
 				stun(3.0)
@@ -344,7 +344,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Pause pursuit while player is inside the Night 5 Secret Sanctuary Corridor
-	if bool(player.get("in_secret_corridor")):
+	if player.get("in_secret_corridor") == true:
 		velocity = Vector3.ZERO
 		return
 

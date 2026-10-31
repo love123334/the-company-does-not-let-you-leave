@@ -258,10 +258,10 @@ func _find_snare_target() -> Node3D:
 	# 1. Check Player
 	var player = get_tree().root.find_child("Player", true, false)
 	if player and is_instance_valid(player):
-		var p_hiding = bool(player.get("is_hiding"))
-		var p_dead = bool(player.get("in_death_sequence")) or bool(player.get("is_dead"))
-		var p_snared = bool(player.get("is_hanged_by_hanger"))
-		var p_floor = int(player.get("current_floor"))
+		var p_hiding = (player.get("is_hiding") == true)
+		var p_dead = (player.get("in_death_sequence") == true) or (player.get("is_dead") == true)
+		var p_snared = (player.get("is_hanged_by_hanger") == true)
+		var p_floor = int(player.get("current_floor")) if player.get("current_floor") != null else 1
 		if not p_hiding and not p_dead and not p_snared and p_floor == 2 and player.global_position.y >= 10.0:
 			var h_dist = Vector2(player.global_position.x - global_position.x, player.global_position.z - global_position.z).length()
 			if h_dist <= snare_radius and player.global_position.y < global_position.y - 1.0:

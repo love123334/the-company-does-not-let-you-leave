@@ -580,7 +580,7 @@ func on_repelled_by_cloak(cloak_pos: Vector3) -> void:
 func start_prey_execution(target_node: Node3D, p_type: String) -> bool:
 	if not active or state == State.DORMANT or state == State.KILL or state == State.EXECUTE_PREY or state == State.STUNNED:
 		return false
-	if not is_instance_valid(target_node) or bool(target_node.get("is_dead")) or bool(target_node.get("is_being_executed")):
+	if not is_instance_valid(target_node) or (target_node.get("is_dead") == true) or (target_node.get("is_being_executed") == true):
 		return false
 	prey_target = target_node
 	prey_type = p_type
@@ -610,7 +610,7 @@ func _find_nearby_prey() -> void:
 	var best_dist: float = 11.2
 
 	for cr in get_tree().get_nodes_in_group("crawlers"):
-		if is_instance_valid(cr) and bool(cr.get("active")) and not bool(cr.get("is_dead")) and not bool(cr.get("latched")) and not bool(cr.get("is_being_executed")):
+		if is_instance_valid(cr) and (cr.get("active") == true) and (cr.get("is_dead") != true) and (cr.get("latched") != true) and (cr.get("is_being_executed") != true):
 			if _is_inside_statue_fear_zone(cr.global_position.x, cr.global_position.z):
 				continue
 			var d = Vector2(cr.global_position.x - global_position.x, cr.global_position.z - global_position.z).length()
@@ -620,7 +620,7 @@ func _find_nearby_prey() -> void:
 				best_type = "crawler"
 
 	for cu in get_tree().get_nodes_in_group("cultists"):
-		if is_instance_valid(cu) and bool(cu.get("active")) and not bool(cu.get("is_dead")) and not bool(cu.get("is_killing")) and not bool(cu.get("is_being_executed")):
+		if is_instance_valid(cu) and (cu.get("active") == true) and (cu.get("is_dead") != true) and (cu.get("is_killing") != true) and (cu.get("is_being_executed") != true):
 			if _is_inside_statue_fear_zone(cu.global_position.x, cu.global_position.z):
 				continue
 			var d = Vector2(cu.global_position.x - global_position.x, cu.global_position.z - global_position.z).length()
@@ -1251,7 +1251,7 @@ func _physics_process(delta: float) -> void:
 		_update_kill_sequence(delta)
 		return
 
-	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+	if player and (player.get("is_dead") == true or player.get("in_death_sequence") == true):
 		velocity = Vector3.ZERO
 		return
 
@@ -1281,7 +1281,7 @@ func _physics_process(delta: float) -> void:
 		stun_timer -= delta
 		velocity = Vector3.ZERO
 		if stun_timer <= 0.0:
-			state = State.ROAM if (player and (bool(player.get("is_hiding")) or bool(player.get("is_inside_cloak")))) else State.CHASE
+			state = State.ROAM if (player and (player.get("is_hiding") == true or player.get("is_inside_cloak") == true)) else State.CHASE
 			parry_decay_timer = 6.0
 		return
 
@@ -1316,7 +1316,7 @@ func _physics_process(delta: float) -> void:
 			rotation.y = lerp_angle(rotation.y, atan2(-to_p.x, -to_p.z), delta * 12.0)
 			var dist_2d = Vector2(to_p.x, to_p.z).length()
 			if windup_timer <= 0.0:
-				if dist_2d <= 2.35 and not bool(player.get("is_hiding")) and not bool(player.get("is_inside_cloak")):
+				if dist_2d <= 2.35 and player.get("is_hiding") != true and player.get("is_inside_cloak") != true:
 					start_kill("claw", "HARVESTED BY SUBJECT ZERO — YOU DID NOT BREAK LINE OF SIGHT.")
 					return
 				else:
@@ -1324,7 +1324,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Pause pursuit while player is inside the Night 5 Secret Sanctuary Corridor
-	if player and bool(player.get("in_secret_corridor")):
+	if player and player.get("in_secret_corridor") == true:
 		velocity = Vector3.ZERO
 		return
 
@@ -1336,7 +1336,7 @@ func _physics_process(delta: float) -> void:
 			_find_nearby_prey()
 
 	if state == State.HUNT_PREY:
-		if not is_instance_valid(prey_target) or bool(prey_target.get("is_dead")) or bool(prey_target.get("is_being_executed")):
+		if not is_instance_valid(prey_target) or prey_target.get("is_dead") == true or prey_target.get("is_being_executed") == true:
 			prey_target = null
 			state = State.CHASE
 		else:
@@ -1422,8 +1422,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Check if player is hiding in Locker or Cloak
-	var player_in_locker: bool = player != null and bool(player.get("is_hiding"))
-	var player_hiding: bool = player != null and (player_in_locker or bool(player.get("is_inside_cloak")))
+	var player_in_locker: bool = player != null and (player.get("is_hiding") == true)
+	var player_hiding: bool = player != null and (player_in_locker or (player.get("is_inside_cloak") == true))
 	if player_hiding and state == State.CHASE:
 		state = State.ROAM
 		_pick_roam_dir_away_from(global_position + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)))
@@ -1431,7 +1431,7 @@ func _physics_process(delta: float) -> void:
 		state = State.CHASE
 
 	# Check close-range catch / windup trigger even before checking step movement
-	if state == State.CHASE and player and not player_hiding and not bool(player.get("is_dead")) and not bool(player.get("in_death_sequence")):
+	if state == State.CHASE and player and not player_hiding and player.get("is_dead") != true and player.get("in_death_sequence") != true:
 		var to_p = player.global_position - global_position
 		var dist_2d = Vector2(to_p.x, to_p.z).length()
 		var dy = abs(player.global_position.y - global_position.y)
@@ -1457,7 +1457,7 @@ func _physics_process(delta: float) -> void:
 	var mp_active: bool = false
 	var mp_freeze: bool = false
 	var net_mgr = get_node_or_null("/root/NetworkManager")
-	if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+	if net_mgr and net_mgr.get("is_multiplayer_active") == true:
 		mp_active = true
 		if net_mgr.has_method("is_any_player_in_locker") and net_mgr.is_any_player_in_locker():
 			hunter_can_roam_autonomous = true

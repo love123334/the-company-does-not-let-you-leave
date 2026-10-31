@@ -661,7 +661,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
-	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+	if player and (player.get("is_dead") == true or player.get("in_death_sequence") == true):
 		velocity = Vector3.ZERO
 		return
 
@@ -713,8 +713,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Check player kill contact (unless fleeing in terror from Hunter or player is hidden in locker/cloak)
-	var player_in_locker: bool = player != null and bool(player.get("is_hiding"))
-	var player_hiding: bool = player != null and (player_in_locker or bool(player.get("is_inside_cloak")))
+	var player_in_locker: bool = player != null and player.get("is_hiding") == true
+	var player_hiding: bool = player != null and (player_in_locker or player.get("is_inside_cloak") == true)
 	if player_in_locker and locker_banging_target == null and locker_knock_count == 0:
 		var l_dist = global_position.distance_to(player.global_position)
 		if l_dist < 14.0:
@@ -722,7 +722,7 @@ func _physics_process(delta: float) -> void:
 			locker_knock_count = 3
 			locker_knock_timer = 0.0
 
-	if not afraid_of_hunter and player and not player_hiding and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")):
+	if not afraid_of_hunter and player and not player_hiding and player.get("in_death_sequence") != true and player.get("is_dead") != true:
 		var p_diff = player.global_position - global_position
 		p_diff.y = 0.0
 		if p_diff.length() < 1.95 and abs(player.global_position.y - global_position.y) < 2.2:
@@ -730,7 +730,7 @@ func _physics_process(delta: float) -> void:
 			return
 
 	# Pause pursuit while player is inside the Night 5 Secret Sanctuary Corridor
-	if player and bool(player.get("in_secret_corridor")):
+	if player and player.get("in_secret_corridor") == true:
 		velocity = Vector3.ZERO
 		return
 
