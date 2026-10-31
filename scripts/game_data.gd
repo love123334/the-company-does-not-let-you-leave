@@ -156,6 +156,196 @@ const MAZE_DAY5: Array = [
 
 const ALL_MAZES: Array = [MAZE_DAY1, MAZE_DAY2, MAZE_DAY3, MAZE_DAY4, MAZE_DAY5]
 
+# 28-Map Combination Pools:
+# Night 1: 3 maps (15x15)
+# Night 2: 5 maps (19x19)
+# Night 3: 6 maps (21x21)
+# Night 4: 7 maps (23x23)
+# Night 5: 7 maps (27x27)
+# Total = 3 + 5 + 6 + 7 + 7 = 28 maps
+var NIGHT_MAP_POOLS: Dictionary = {}
+
+func _init() -> void:
+	_init_all_28_maps()
+
+func get_map_pool_for_night(day: int) -> Array:
+	if NIGHT_MAP_POOLS.is_empty() or not NIGHT_MAP_POOLS.has(day):
+		_init_all_28_maps()
+	return NIGHT_MAP_POOLS.get(clampi(day, 1, 5), [MAZE_DAY1])
+
+func get_map_count_for_day(day: int) -> int:
+	return get_map_pool_for_night(day).size()
+
+func get_random_maze_for_day(day: int, map_idx: int = -1) -> Array:
+	var pool: Array = get_map_pool_for_night(day)
+	if pool.is_empty():
+		return ALL_MAZES[clampi(day - 1, 0, ALL_MAZES.size() - 1)]
+	if map_idx >= 0 and map_idx < pool.size():
+		return pool[map_idx]
+	return pool[randi() % pool.size()]
+
+func _init_all_28_maps() -> void:
+	if not NIGHT_MAP_POOLS.is_empty():
+		return
+	NIGHT_MAP_POOLS[1] = [MAZE_DAY1]
+	for v in range(1, 3):
+		NIGHT_MAP_POOLS[1].append(_generate_maze_variant(MAZE_DAY1, 1, v))
+
+	NIGHT_MAP_POOLS[2] = [MAZE_DAY2]
+	for v in range(1, 5):
+		NIGHT_MAP_POOLS[2].append(_generate_maze_variant(MAZE_DAY2, 2, v))
+
+	NIGHT_MAP_POOLS[3] = [MAZE_DAY3]
+	for v in range(1, 6):
+		NIGHT_MAP_POOLS[3].append(_generate_maze_variant(MAZE_DAY3, 3, v))
+
+	NIGHT_MAP_POOLS[4] = [MAZE_DAY4]
+	for v in range(1, 7):
+		NIGHT_MAP_POOLS[4].append(_generate_maze_variant(MAZE_DAY4, 4, v))
+
+	NIGHT_MAP_POOLS[5] = [MAZE_DAY5]
+	for v in range(1, 7):
+		NIGHT_MAP_POOLS[5].append(_generate_maze_variant(MAZE_DAY5, 5, v))
+
+func _generate_maze_variant(base_maze: Array, day: int, v: int) -> Array:
+	var S: int = base_maze.size()
+	var g: Array = []
+	for r in range(S):
+		g.append(base_maze[r].duplicate())
+
+	var rng = RandomNumberGenerator.new()
+	rng.seed = hash(day * 1000 + v * 739)
+
+	# Transform internal corridors while preserving outer perimeter
+	for r in range(2, S - 2):
+		for c in range(2, S - 2):
+			# Preserve Central Hub on Days 3, 4, 5
+			var mid: int = int(S / 2)
+			if day >= 3 and abs(r - mid) <= 2 and abs(c - mid) <= 2:
+				g[r][c] = TileType.CORRIDOR
+				continue
+
+			# Invert or alter corridors probabilistically with variant seed
+			var old_val: int = g[r][c]
+			if old_val == TileType.WALL and rng.randf() < 0.22:
+				g[r][c] = TileType.CORRIDOR
+			elif old_val == TileType.CORRIDOR and rng.randf() < 0.16:
+				g[r][c] = TileType.WALL
+
+	# Outer perimeter walls
+	for i in range(S):
+		g[0][i] = TileType.WALL
+		g[S - 1][i] = TileType.WALL
+		g[i][0] = TileType.WALL
+		g[i][S - 1] = TileType.WALL
+
+	# Essential Landmark Preservations:
+	# 1. Player Spawn & safety room
+	g[1][1] = TileType.CORRIDOR
+	g[1][2] = TileType.CORRIDOR
+	g[2][1] = TileType.CORRIDOR
+	g[2][2] = TileType.CORRIDOR
+
+	# 2. Exit gate
+	g[S - 2][S - 2] = TileType.EXIT
+	g[S - 2][S - 3] = TileType.CORRIDOR
+	g[S - 3][S - 2] = TileType.CORRIDOR
+
+	# 3. Night 5 Secret Sanctuary corridor entrance on North Wall
+	if day == 5 and S > 13:
+		g[0][13] = TileType.CORRIDOR
+		g[1][13] = TileType.CORRIDOR
+
+	# 4. Clear all existing token positions and collect open cells for re-placement
+	var open_cells: Array[Vector2i] = []
+	for r in range(1, S - 1):
+		for c in range(1, S - 1):
+			if g[r][c] != TileType.WALL and g[r][c] != TileType.EXIT:
+				g[r][c] = TileType.CORRIDOR
+				if (r + c) > 4 and (abs(r - (S - 2)) + abs(c - (S - 2))) > 3:
+					open_cells.append(Vector2i(c, r))
+
+	# Shuffle open cells with deterministic seed
+	for i in range(open_cells.size() - 1, 0, -1):
+		var j = rng.randi_range(0, i)
+		var tmp = open_cells[i]
+		open_cells[i] = open_cells[j]
+		open_cells[j] = tmp
+
+	var idx: int = 0
+	# Place 3 Keycards
+	for k in range(3):
+		if idx < open_cells.size():
+			g[open_cells[idx].y][open_cells[idx].x] = TileType.KEYCARD
+			idx += 1
+
+	# Place 3 Spills
+	for k in range(3):
+		if idx < open_cells.size():
+			g[open_cells[idx].y][open_cells[idx].x] = TileType.SPILL
+			idx += 1
+
+	# Place 2 Terminals
+	for k in range(2):
+		if idx < open_cells.size():
+			g[open_cells[idx].y][open_cells[idx].x] = TileType.TERMINAL
+			idx += 1
+
+	# Place 2 BioTanks
+	for k in range(2):
+		if idx < open_cells.size():
+			g[open_cells[idx].y][open_cells[idx].x] = TileType.BIOTANK
+			idx += 1
+
+	# Place 2 Gates
+	for k in range(2):
+		if idx < open_cells.size():
+			g[open_cells[idx].y][open_cells[idx].x] = TileType.TRAP
+			idx += 1
+
+	# Place Notes, Map Fragment, Artifact
+	if idx < open_cells.size():
+		g[open_cells[idx].y][open_cells[idx].x] = TileType.LORE_NOTE
+		idx += 1
+	if idx < open_cells.size():
+		g[open_cells[idx].y][open_cells[idx].x] = TileType.MAP_FRAGMENT
+		idx += 1
+	if idx < open_cells.size():
+		g[open_cells[idx].y][open_cells[idx].x] = TileType.ARTIFACT
+		idx += 1
+
+	# 5. BFS Reachability Check: Ensure ALL open cells & Exit can be reached from (1, 1)
+	var q: Array[Vector2i] = [Vector2i(1, 1)]
+	var visited: Dictionary = {Vector2i(1, 1): true}
+	var dirs = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+
+	while not q.is_empty():
+		var cur = q.pop_front()
+		for d in dirs:
+			var nr = cur.y + d.y
+			var nc = cur.x + d.x
+			var np = Vector2i(nc, nr)
+			if nr >= 1 and nr < S - 1 and nc >= 1 and nc < S - 1:
+				if g[nr][nc] != TileType.WALL and not visited.has(np):
+					visited[np] = true
+					q.push_back(np)
+
+	# Carve direct connections for any unreachable open cells
+	for r in range(1, S - 1):
+		for c in range(1, S - 1):
+			var p = Vector2i(c, r)
+			if g[r][c] != TileType.WALL and not visited.has(p):
+				# Tunnel toward (1, 1) until hitting visited
+				var target_r = r
+				var target_c = c
+				while target_r >= 1 and target_c >= 1 and not visited.has(Vector2i(target_c, target_r)):
+					g[target_r][target_c] = TileType.CORRIDOR
+					visited[Vector2i(target_c, target_r)] = true
+					if target_r > 1: target_r -= 1
+					elif target_c > 1: target_c -= 1
+
+	return g
+
 # 0-indexed Day Meta matching ALL_MAZES (Nights 1 to 5 at indices 0..4)
 const DAY_META: Array = [
 	{
@@ -171,7 +361,7 @@ const DAY_META: Array = [
 		"title": "AETHELGARD BIOTECH — SUB-LEVEL 6",
 		"label": "NIGHT 2",
 		"color": Color(0.96, 0.62, 0.07),
-		"wage": 200, "spills": 3, "terms": 2, "blood": 3, "dist": 200,
+		"wage": 200, "spills": 3, "terms": 2, "blood": 3, "dist": 210,
 		"crawlers": 5, "statues": 2, "cultists": 0, "cloaks": 0, "speed": 5.9
 	},
 	{
@@ -179,7 +369,7 @@ const DAY_META: Array = [
 		"title": "AETHELGARD BIOTECH — SUB-LEVEL 9",
 		"label": "NIGHT 3",
 		"color": Color(0.94, 0.27, 0.27),
-		"wage": 300, "spills": 3, "terms": 2, "blood": 3, "dist": 200,
+		"wage": 300, "spills": 2, "terms": 1, "blood": 2, "dist": 250,
 		"crawlers": 6, "statues": 2, "cultists": 2, "cloaks": 0, "speed": 6.2
 	},
 	{
@@ -187,7 +377,7 @@ const DAY_META: Array = [
 		"title": "AETHELGARD BIOTECH — SUB-LEVEL 12 · THE ARCHIVE",
 		"label": "NIGHT 4",
 		"color": Color(0.65, 0.55, 0.98),
-		"wage": 400, "spills": 3, "terms": 2, "blood": 3, "dist": 200,
+		"wage": 400, "spills": 2, "terms": 1, "blood": 2, "dist": 270,
 		"crawlers": 6, "statues": 3, "cultists": 3, "cloaks": 2, "speed": 6.4
 	},
 	{
@@ -195,7 +385,7 @@ const DAY_META: Array = [
 		"title": "AETHELGARD BIOTECH — SUB-LEVEL 15 · THE TETHER",
 		"label": "NIGHT 5",
 		"color": Color(0.96, 0.25, 0.37),
-		"wage": 500, "spills": 3, "terms": 2, "blood": 3, "dist": 200,
+		"wage": 500, "spills": 2, "terms": 1, "blood": 2, "dist": 300,
 		"crawlers": 6, "statues": 4, "cultists": 3, "cloaks": 3, "speed": 6.7
 	}
 ]
@@ -372,5 +562,41 @@ const LORE_NOTES: Dictionary = {
 		"title": "HOW TO REACH THE TRUE ENDING",
 		"tag": "JANITOR #7'S FINAL MAP",
 		"body": "LISTEN TO ME: Do NOT trust the $1 Billion severance!\n\nOn Night 5 (Sub-Level 15), there is a hidden doorway in the NORTH WALL at Row 0, Column 13 leading into the OMEGA SANCTUARY CORRIDOR.\n\nInside that corridor, the step counter pauses and monsters cannot enter. Walk to the far end and activate all 3 SANCTUARY PEDESTALS (or collect all 15 Relics) BEFORE escaping through the Exit!"
+	},
+	"f2_usb_n3": {
+		"day": 3,
+		"title": "PROJECT TETHER // FIELD TELEMETRY — SUB-LEVEL 9",
+		"tag": "AETHELGARD BIOTECH • 2F LAB EXTRACTION",
+		"body": "INCIDENT REPORT: BIO-SPECIMEN ZERO\n\nSubject Zero was recovered from the Sub-Bore excavation at Depth 8,400m. It does not possess organic organs; its physiology is an extra-dimensional neural antenna.\n\nShift Supervisor Harlow discovered that Subject Zero reacts directly to kinetic tremors through the floor slab. The mop provided to Janitor #8 is embedded with synthetic mono-conductors that transmit tactile bio-data directly into Subject Zero's containment chamber.\n\nWarning: Do not alert Employee #8. Their Room 4B eviction notice was falsified to ensure contract compliance."
+	},
+	"f2_dossier_n3": {
+		"day": 3,
+		"title": "RESEARCH SCHEMATIC: THE TENANT'S FREQUENCY",
+		"tag": "DR. VANCE MEMORANDUM // EYES ONLY",
+		"body": "MEMORANDUM FROM DR. VANCE:\n\nTo Shift Supervisor Harlow:\n\nThe red-robed Cultists on Sub-Level 9 were former board members of Vance Holdings. They succumbed to the broadcast frequency during the initial resonance calibration.\n\nNotice that Subject Zero only advances when the subject moves. This is because it perceives kinetic vibration through the concrete slab. If Janitor #8 stands motionless, Subject Zero loses target lock.\n\nEnsure Janitor #8 completes the shift quota. We need their bio-resonance fully calibrated before Night 5."
+	},
+	"f2_usb_n4": {
+		"day": 4,
+		"title": "DEEP VAULT TELEMETRY // SUB-LEVEL 12",
+		"tag": "ARCHIVE EXTRACTION • CLASSIFIED",
+		"body": "EXCAVATION LOG: THE SECONDARY SPECIMENS\n\nWe identified two auxiliary lifeforms emerging from the lower fault line: The Observers (Stone Statues) and The Shrouds (Cloaks).\n\nThe Observers hunt purely through quantum observation—they freeze under direct line of sight and snap the spine in darkness. The Cloaks are atmospheric vacuum entities; they drift without sound and consume all ambient oxygen.\n\nHarlow is preparing the global broadcast relay for Night 5. Janitor #7 tried to escape with the 15 artifacts; they were terminated at the door."
+	},
+	"f2_dossier_n4": {
+		"day": 4,
+		"title": "CLASSIFIED DOSSIER: JANITOR #7'S CONFESSION",
+		"tag": "SECURITY SEIZURE // FILE #771",
+		"body": "RETRIEVED FROM LOCKER #4:\n\n'If you are reading this, you are Employee #8. Harlow lied to you. The debt, the eviction notice at 01:40 AM, the phone call... they set you up.\n\nThey didn't hire you to clean. They hired you to be the biological anchor for the Tether.\n\nOn Night 5 (Sub-Level 15), DO NOT TAKE THE $1 BILLION. Look at Row 0, Column 13 on the North Wall—there is an unmapped passage to the Omega Sanctuary. Find the 3 Sanctuary Pedestals or collect all 15 Relics! That is the only way out.'"
+	},
+	"f2_usb_n5": {
+		"day": 5,
+		"title": "PROJECT TETHER // GLOBAL ACTIVATION PROTOCOL",
+		"tag": "OMEGA CLEARANCE • FINAL TELEMETRY",
+		"body": "AUTOMATED BROADCAST NOTICE:\n\nCarrier Wave Resonance: 99.8%.\nUpon Janitor #8 signing the $1,000,000,000 severance document at the exit, their digitized consciousness will complete the circuit. The Entity will be transmitted across the city's power grid, banking mainframe, and cellular networks.\n\nAll doors will be permanently sealed behind them.\nProject Tether is irreversible."
+	},
+	"f2_dossier_n5": {
+		"day": 5,
+		"title": "PROJECT TETHER // SANCTUARY OVERRIDE SCHEMATIC",
+		"tag": "TRUE TERMINATION MANUAL",
+		"body": "SANCTUARY SECURITY BYPASS:\n\nIn the event of containment breach on Sub-Level 15, the Omega Sanctuary at the far north remains isolated from the Entity's psychic reach.\n\nThe 3 Pedestals at the end of the Sanctuary Corridor can invert the carrier frequency if all 3 are activated before the exit is breached.\n\nActivation of all 3 Pedestals will purge the Tether and sever Subject Zero's connection to the surface forever."
 	}
 }

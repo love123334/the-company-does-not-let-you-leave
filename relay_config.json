@@ -1,0 +1,4 @@
+{
+  "relay_url": "ws://127.0.0.1:8912",
+  "note": "Thay ws://127.0.0.1:8912 bang wss://<domain-cua-ban> neu host tren Glitch / Render / Railway de choi online xuyen mang."
+}

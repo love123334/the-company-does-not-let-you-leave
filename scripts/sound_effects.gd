@@ -18,6 +18,7 @@ var snd_shatter: AudioStreamWAV
 var snd_whisper: AudioStreamWAV
 var snd_breath_gasp: AudioStreamWAV
 var snd_cloth_wrap: AudioStreamWAV
+var snd_metal_drag: AudioStreamWAV
 
 var snd_ambient_work: AudioStreamWAV
 var snd_ambient_chase: AudioStreamWAV
@@ -59,6 +60,7 @@ func _generate_all_clean_sounds() -> void:
     snd_whisper = _create_breath_or_cloth_wav(260.0, 140.0, 0.55, 0.38, 0.55)
     snd_breath_gasp = _create_breath_or_cloth_wav(340.0, 190.0, 0.28, 0.48, 0.65)
     snd_cloth_wrap = _create_breath_or_cloth_wav(180.0, 95.0, 0.36, 0.52, 0.70)
+    snd_metal_drag = _create_heavy_metal_drag_wav()
     
     snd_ambient_work = _create_work_ambient()
     snd_ambient_chase = _create_chase_ambient()
@@ -128,7 +130,13 @@ func play_cultist_chant() -> void:
     play(snd_growl, -4.0, randf_range(0.85, 1.1))
 
 func play_stone_grind() -> void:
-    play(snd_stone, -2.0, randf_range(0.9, 1.1))
+    play(snd_metal_drag, -2.0, randf_range(0.9, 1.1))
+
+func play_stone_drag(volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
+    play(snd_metal_drag, volume_db, pitch_scale)
+
+func play_metal_drag(volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
+    play_stone_drag(volume_db, pitch_scale)
 
 func play_hunter_screech() -> void:
     play(snd_screech, 2.0, randf_range(0.92, 1.08))
@@ -363,5 +371,56 @@ func _create_clean_siren() -> AudioStreamWAV:
     wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
     wav.loop_begin = 0
     wav.loop_end = samples
+    wav.data = bytes
+    return wav
+
+# Heavy solid stone sliding, grinding and crushing across concrete floor (pure natural stone friction)
+func _create_heavy_metal_drag_wav() -> AudioStreamWAV:
+    var rate: int = 22050
+    var dur: float = 1.05
+    var samples: int = int(dur * float(rate))
+    var bytes = PackedByteArray()
+    bytes.resize(samples * 2)
+
+    var p_sub: float = 0.0
+    var lp_grit1: float = 0.0
+    var lp_grit2: float = 0.0
+    var lp_grit3: float = 0.0
+
+    for i in range(samples):
+        var t: float = float(i) / float(samples)
+
+        # 1. Pure subterranean low bass weight rumble (36Hz -> 30Hz slow drift)
+        var f_sub: float = lerpf(38.0, 31.0, t)
+        p_sub += (f_sub * TAU) / float(rate)
+        var sub_bass: float = sin(p_sub) * 0.45
+
+        # 2. Heavy rough stone granule friction (pure multi-pole low-pass filtered brown noise, cutoff ~260Hz)
+        # Completely devoid of harsh saws, FM tones, metallic ring, or rapid buzzing
+        var white: float = randf() * 2.0 - 1.0
+        lp_grit1 = lerpf(lp_grit1, white, 0.055)
+        lp_grit2 = lerpf(lp_grit2, lp_grit1, 0.075)
+        lp_grit3 = lerpf(lp_grit3, lp_grit2, 0.09)
+
+        # Subtle organic stone drag roughness (slow randomized micro-shifts)
+        var stone_grind: float = lp_grit3 * 3.4
+
+        # 3. Natural physical envelope: gradual heavy shove, sustained heavy drag, slow heavy rest
+        var env: float = 1.0
+        if t < 0.18:
+            env = t / 0.18
+        elif t > 0.65:
+            env = max(0.0, (1.0 - t) / 0.35)
+
+        var val: float = (sub_bass + stone_grind) * env * 0.78
+        var s16: int = int(clamp(val * 32767.0, -32768.0, 32767.0))
+        var u16: int = s16 if s16 >= 0 else s16 + 65536
+        bytes[i * 2] = u16 & 0xFF
+        bytes[i * 2 + 1] = (u16 >> 8) & 0xFF
+
+    var wav = AudioStreamWAV.new()
+    wav.format = AudioStreamWAV.FORMAT_16_BITS
+    wav.mix_rate = rate
+    wav.stereo = false
     wav.data = bytes
     return wav

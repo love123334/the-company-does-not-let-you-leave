@@ -7,6 +7,8 @@ extends CharacterBody3D
 
 signal player_killed(reason: String)
 
+const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
+
 var player: CharacterBody3D = null
 var active: bool = false
 var is_caged: bool = false
@@ -17,6 +19,12 @@ var is_being_executed: bool = false
 var exec_timer: float = 0.0
 var exec_snapped: bool = false
 var head_pivot: Node3D = null
+
+var is_snared_by_hanger: bool = false
+var hanger_snare_timer: float = 0.0
+var locker_banging_target: Node3D = null
+var locker_knock_count: int = 0
+var locker_knock_timer: float = 0.0
 
 var move_speed: float = 4.6
 var hp: int = 3
@@ -43,7 +51,7 @@ var anim_phase: float = 0.0
 func _ready() -> void:
 	add_to_group("cultists")
 	collision_layer = 4
-	collision_mask = 1
+	collision_mask = 1 | 8
 	anim_phase = randf() * TAU
 	chant_timer = randf_range(2.5, 6.0)
 	_choose_new_roam_dir()
@@ -86,6 +94,55 @@ func hit_by_mop() -> bool:
 	SoundEffects.play_cultist_chant()
 	return true
 
+func stun(duration: float) -> void:
+	if is_dead:
+		return
+	stun_timer = max(stun_timer, duration)
+	velocity = Vector3.ZERO
+	_spawn_electric_sparks(duration)
+	SoundEffects.play_cultist_chant()
+
+func _spawn_electric_sparks(duration: float) -> void:
+	var spark_node = Node3D.new()
+	spark_node.name = "StunSparks"
+	spark_node.position = Vector3(0, 1.0, 0)
+	add_child(spark_node)
+
+	var light = OmniLight3D.new()
+	light.light_color = Color(0.3, 0.85, 1.0)
+	light.light_energy = 2.0
+	light.omni_range = 3.5
+	spark_node.add_child(light)
+
+	var spark_mat = StandardMaterial3D.new()
+	spark_mat.albedo_color = Color(0.4, 0.9, 1.0)
+	spark_mat.emission_enabled = true
+	spark_mat.emission = Color(0.5, 0.95, 1.0)
+	spark_mat.emission_energy_multiplier = 3.0
+
+	var sparks: Array[MeshInstance3D] = []
+	for i in range(8):
+		var sp = MeshInstance3D.new()
+		var cyl = CylinderMesh.new()
+		cyl.top_radius = 0.007
+		cyl.bottom_radius = 0.007
+		cyl.height = 0.18
+		sp.mesh = cyl
+		sp.material_override = spark_mat
+		spark_node.add_child(sp)
+		sparks.append(sp)
+
+	var tw = create_tween()
+	tw.tween_method(func(t: float):
+		if not is_instance_valid(spark_node): return
+		light.light_energy = randf_range(1.0, 2.5)
+		for sp in sparks:
+			if is_instance_valid(sp):
+				sp.position = Vector3(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4), randf_range(-0.4, 0.4))
+				sp.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	, 0.0, duration, duration)
+	tw.tween_callback(spark_node.queue_free)
+
 func take_crawler_attack() -> void:
 	if is_dead:
 		return
@@ -115,25 +172,11 @@ func _build_cultist_mesh() -> void:
 	mesh_root.name = "CultistVisual"
 	add_child(mesh_root)
 
-	var robe_mat = StandardMaterial3D.new()
-	robe_mat.albedo_color = Color(0.08, 0.015, 0.03)
-	robe_mat.roughness = 0.86
-	robe_mat.emission_enabled = true
-	robe_mat.emission = Color(0.03, 0.0, 0.008)
-
-	var trim_mat = StandardMaterial3D.new()
-	trim_mat.albedo_color = Color(0.60, 0.06, 0.09)
-	trim_mat.roughness = 0.55
-	trim_mat.emission_enabled = true
-	trim_mat.emission = Color(0.22, 0.01, 0.03)
-
-	var dark_mat = StandardMaterial3D.new()
-	dark_mat.albedo_color = Color(0.02, 0.004, 0.008)
-	dark_mat.roughness = 0.96
-
-	var mask_mat = StandardMaterial3D.new()
-	mask_mat.albedo_color = Color(0.85, 0.80, 0.72)
-	mask_mat.roughness = 0.45
+	var robe_mat = VisualMaterialFactory.create_robe_fabric(Color(0.08, 0.015, 0.03), Color(0.03, 0.0, 0.008))
+	var trim_mat = VisualMaterialFactory.create_robe_fabric(Color(0.60, 0.06, 0.09), Color(0.22, 0.01, 0.03))
+	var dark_mat = VisualMaterialFactory.create_chitin_material(Color(0.02, 0.004, 0.008), 0.1, 0.85)
+	var mask_mat = VisualMaterialFactory.create_stone_material(Color(0.85, 0.80, 0.72))
+	var bone_mat = VisualMaterialFactory.create_bone_material(Color(0.80, 0.75, 0.64))
 
 	var eye_mat = StandardMaterial3D.new()
 	eye_mat.albedo_color = Color(1.0, 0.14, 0.0)
@@ -145,10 +188,6 @@ func _build_cultist_mesh() -> void:
 	gold_mat.albedo_color = Color(0.78, 0.57, 0.16)
 	gold_mat.metallic = 0.85
 	gold_mat.roughness = 0.25
-
-	var bone_mat = StandardMaterial3D.new()
-	bone_mat.albedo_color = Color(0.80, 0.75, 0.64)
-	bone_mat.roughness = 0.52
 
 	var steel_mat = StandardMaterial3D.new()
 	steel_mat.albedo_color = Color(0.78, 0.81, 0.86)
@@ -622,6 +661,10 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
+	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+		velocity = Vector3.ZERO
+		return
+
 	if is_caged or not active:
 		if mesh_root:
 			mesh_root.position.y = sin(anim_phase * 0.8) * 0.04
@@ -661,12 +704,28 @@ func _physics_process(delta: float) -> void:
 				if hunter.start_prey_execution(self, "cultist"):
 					return
 
+	if is_snared_by_hanger:
+		hanger_snare_timer -= delta
+		velocity = Vector3.ZERO
+		rotation.y += sin(anim_phase * 6.0) * delta * 2.0
+		if hanger_snare_timer <= 0.0:
+			release_from_hanger()
+		return
+
 	# Check player kill contact (unless fleeing in terror from Hunter or player is hidden in locker/cloak)
-	var player_hiding: bool = player != null and (bool(player.get("is_hiding")) or bool(player.get("is_inside_cloak")))
-	if not afraid_of_hunter and player and not player_hiding and not bool(player.get("in_death_sequence")):
+	var player_in_locker: bool = player != null and bool(player.get("is_hiding"))
+	var player_hiding: bool = player != null and (player_in_locker or bool(player.get("is_inside_cloak")))
+	if player_in_locker and locker_banging_target == null and locker_knock_count == 0:
+		var l_dist = global_position.distance_to(player.global_position)
+		if l_dist < 14.0:
+			locker_banging_target = player.get("current_locker")
+			locker_knock_count = 3
+			locker_knock_timer = 0.0
+
+	if not afraid_of_hunter and player and not player_hiding and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")):
 		var p_diff = player.global_position - global_position
 		p_diff.y = 0.0
-		if p_diff.length() < 1.40 and abs(player.global_position.y - global_position.y) < 2.2:
+		if p_diff.length() < 1.95 and abs(player.global_position.y - global_position.y) < 2.2:
 			_trigger_cultist_kill()
 			return
 
@@ -682,8 +741,30 @@ func _physics_process(delta: float) -> void:
 	var move_dir := Vector3.ZERO
 	var cur_speed: float = move_speed
 
+	# 0. Locker investigation: bang on locker door 3 times then walk away
+	if is_instance_valid(locker_banging_target) and locker_knock_count > 0:
+		var fwd_l = locker_banging_target.global_transform.basis.z
+		var front_pos = locker_banging_target.global_position + fwd_l * 1.35
+		front_pos.y = global_position.y
+		var to_front = front_pos - global_position
+		to_front.y = 0.0
+		if to_front.length() > 0.45:
+			move_dir = to_front.normalized()
+			cur_speed = move_speed * 0.92
+		else:
+			move_dir = Vector3.ZERO
+			rotation.y = lerp_angle(rotation.y, atan2(-fwd_l.x, -fwd_l.z), delta * 12.0)
+			locker_knock_timer += delta
+			if locker_knock_timer >= 0.65:
+				locker_knock_timer = 0.0
+				locker_knock_count -= 1
+				SoundEffects.play(SoundEffects.snd_click, 3.2, 0.42)
+				if locker_knock_count <= 0:
+					locker_banging_target = null
+					_choose_new_roam_dir()
+
 	# 1. Flee in terror from Hunter if Hunter is nearby (< 13.5m)
-	if hunter and hunter.get("active"):
+	elif hunter and hunter.get("active"):
 		var h_diff = global_position - hunter.global_position
 		h_diff.y = 0.0
 		var h_dist = h_diff.length()
@@ -714,6 +795,9 @@ func _physics_process(delta: float) -> void:
 					var to_wp = Vector3(wx - global_position.x, 0.0, wz - global_position.z)
 					if to_wp.length() > 0.05:
 						move_dir = to_wp.normalized()
+				else:
+					# Closed gate blocks BFS path to player: do not charge into closed gate
+					move_dir = Vector3.ZERO
 			if move_dir == Vector3.ZERO and p_diff.length() > 0.05:
 				move_dir = p_diff.normalized()
 
@@ -727,7 +811,10 @@ func _physics_process(delta: float) -> void:
 
 	velocity.x = move_dir.x * cur_speed
 	velocity.z = move_dir.z * cur_speed
-	velocity.y = 0.0
+	if not is_on_floor():
+		velocity.y -= 18.0 * delta
+	else:
+		velocity.y = 0.0
 	move_and_slide()
 
 	if get_slide_collision_count() > 0 and roam_timer < 1.8:
@@ -738,7 +825,7 @@ func _physics_process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, target_yaw, delta * 8.0)
 
 func _trigger_cultist_kill() -> void:
-	if is_killing or (player and player.get("god_mode")):
+	if is_killing or (player and (player.get("god_mode") or player.get("is_dead"))):
 		return
 	is_killing = true
 	velocity = Vector3.ZERO
@@ -746,6 +833,21 @@ func _trigger_cultist_kill() -> void:
 	if player and is_instance_valid(player):
 		var to_p = player.global_position - global_position
 		rotation.y = atan2(-to_p.x, -to_p.z)
+
+		# Baton Guard & Parry Check
+		if player.has_method("is_baton_defending") and player.is_baton_defending():
+			if player.is_baton_parrying():
+				stun(3.0)
+				player.on_successful_parry(self)
+				var hud_node = get_tree().root.find_child("HUD", true, false)
+				if hud_node and hud_node.has_method("show_toast"):
+					hud_node.show_toast("⚡ PERFECT PARRY! CULTIST DEFLECTED & STUNNED (3.0s)!", Color(0.2, 1.0, 0.5))
+				return
+			elif player.is_baton_blocking():
+				player.on_successful_block(self)
+				stun_timer = 1.5
+				return
+
 		var hud_node = get_tree().root.find_child("HUD", true, false)
 		if hud_node and hud_node.has_method("flash_damage"):
 			hud_node.flash_damage()
@@ -780,3 +882,13 @@ func _animate_visuals(_delta: float) -> void:
 		var m = motes[i]
 		var a = anim_phase * 1.8 + i * (TAU / 6.0)
 		m.position = Vector3(cos(a) * 0.48, 0.9 + sin(a * 1.5 + i) * 0.45, sin(a) * 0.48)
+
+func freeze_by_hanger(duration: float = 3.5) -> void:
+	is_snared_by_hanger = true
+	hanger_snare_timer = duration
+	velocity = Vector3.ZERO
+
+func release_from_hanger() -> void:
+	is_snared_by_hanger = false
+	hanger_snare_timer = 0.0
+	stun_timer = 2.5

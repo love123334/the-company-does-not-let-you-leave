@@ -13,7 +13,9 @@ extends CharacterBody3D
 
 signal player_caught(reason: String)
 
-enum State { DORMANT, CHASE, ROAM, HIDE_SEEK, WINDUP, STUNNED, AMBUSH, KILL, HUNT_PREY, EXECUTE_PREY }
+const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
+
+enum State { DORMANT, CHASE, ROAM, HIDE_SEEK, WINDUP, STUNNED, AMBUSH, KILL, HUNT_PREY, EXECUTE_PREY, FEIGN_LOCKER_KILL, HANGER_SNARED }
 
 const _N4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
@@ -46,6 +48,8 @@ var _bfs_grid_size: int = 0
 
 var base_speed: float = 5.6
 var stun_timer: float = 0.0
+var parry_decay_timer: float = 0.0
+var parry_decay_step: int = 0
 var ambush_timer: float = 0.0
 var windup_timer: float = 0.0
 var devour_pause_timer: float = 0.0
@@ -65,6 +69,10 @@ var hide_seek_target: Vector3 = Vector3.ZERO
 var hide_seek_locker: Node3D = null
 var hide_seek_timer: float = 0.0
 var saw_player_hide: bool = false
+var feign_kill_stage: int = 0
+var feign_kill_timer: float = 0.0
+var feign_scratch_count: int = 0
+var hanger_snare_timer: float = 0.0
 
 # Anatomical v7 Rig Nodes
 var mesh_root: Node3D = null
@@ -85,14 +93,16 @@ var anim_time: float = 0.0
 
 func _ready() -> void:
 	add_to_group("hunter")
-	collision_layer = 4
-	collision_mask = 1
+	collision_layer = 0
+	collision_mask = 0
 	_build_hunter_mesh()
-	scale = Vector3(0.48, 0.48, 0.48)
+	scale = Vector3(0.52, 0.52, 0.52)
 
 func activate() -> void:
 	active = true
 	state = State.CHASE
+	collision_layer = 4
+	collision_mask = 1 | 8
 	mop_hits_taken = 0
 	var tw = create_tween()
 	tw.tween_property(self, "scale", Vector3.ONE, 0.7).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -176,7 +186,7 @@ func _get_player_bfs_field(respect_gates: bool) -> PackedInt32Array:
 	var gate_str := ""
 	for k in closed_gates.keys():
 		gate_str += "%d,%d;" % [k.x, k.y]
-	var key := "%d,%d|%d|%s" % [pr, pc, S, gate_str]
+	var key := "%d,%d|%d|%s|%s" % [pr, pc, S, gate_str, str(respect_gates)]
 	if key == _bfs_cache_key and _bfs_dist_field.size() == S * S:
 		return _bfs_dist_field
 
@@ -337,7 +347,7 @@ func _advance_along_bfs_path(budget: float, stop_dist: float, delta: float) -> S
 	if not player or not is_instance_valid(player):
 		return "lost"
 	var respect_gates: bool = not final_mode and not overtime_rage
-	var d := _get_player_bfs_field(false)
+	var d := _get_player_bfs_field(respect_gates)
 	var S: int = _bfs_grid_size
 	if d.is_empty() or S <= 0:
 		return "lost"
@@ -361,7 +371,32 @@ func _advance_along_bfs_path(budget: float, stop_dist: float, delta: float) -> S
 			break
 		var cur: int = d[r * S + c]
 		if cur < 0:
-			status = "lost"
+			# Emergency Unstuck Recovery: Hunter is inside a wall or niche cutout!
+			# Search 8 neighbors for the nearest open corridor tile leading toward player
+			var best_d: int = 999999
+			var best_nc: int = -1
+			var best_nr: int = -1
+			for dr_off in [-1, 0, 1]:
+				for dc_off in [-1, 0, 1]:
+					if dr_off == 0 and dc_off == 0: continue
+					var cr: int = r + dr_off
+					var cc: int = c + dc_off
+					if cr >= 0 and cc >= 0 and cr < S and cc < S:
+						var nd: int = d[cr * S + cc]
+						if nd >= 0 and nd < best_d:
+							best_d = nd
+							best_nr = cr
+							best_nc = cc
+			if best_nr >= 0 and best_nc >= 0:
+				var push_target = Vector2(float(best_nc) * U, float(best_nr) * U)
+				pos_x = push_target.x
+				pos_z = push_target.y
+				global_position.x = pos_x
+				global_position.z = pos_z
+				velocity = Vector3.ZERO
+				status = "moving"
+			else:
+				status = "lost"
 			break
 		if cur == 0:
 			var dx: float = tx - pos_x
@@ -407,16 +442,15 @@ func _advance_along_bfs_path(budget: float, stop_dist: float, delta: float) -> S
 		var dr: int = nb[2]
 		var dc: int = nb[3]
 
-		# Check if a closed security gate blocks the next cell
-		if closed_gates.has(Vector2i(nr, nc)):
-			var sx: float = float(nc) * U - float(dc) * 1.8
-			var sz: float = float(nr) * U - float(dr) * 1.8
-			var gd: float = Vector2(sx - pos_x, sz - pos_z).length()
-			if gd > 0.05:
-				var k: float = min(budget, gd) / gd
-				pos_x += (sx - pos_x) * k
-				pos_z += (sz - pos_z) * k
-				heading_dir = Vector2(sx - pos_x, sz - pos_z).normalized()
+		# Check if a closed security gate blocks the next cell or current cell
+		if closed_gates.has(Vector2i(nr, nc)) or closed_gates.has(Vector2i(r, c)):
+			var safe_x: float = float(c) * U
+			var safe_z: float = float(r) * U
+			var to_safe = Vector2(safe_x - pos_x, safe_z - pos_z)
+			if to_safe.length() > 0.05:
+				var move_s = min(budget, to_safe.length())
+				pos_x += to_safe.normalized().x * move_s
+				pos_z += to_safe.normalized().y * move_s
 			status = "blocked"
 			break
 
@@ -464,6 +498,72 @@ func hit_by_mop() -> String:
 		state = State.STUNNED
 		stun_timer = 4.5
 		return "stunned"
+
+func stun(duration: float) -> void:
+	if state == State.KILL or state == State.DORMANT:
+		return
+	state = State.STUNNED
+	stun_timer = max(stun_timer, duration)
+	velocity = Vector3.ZERO
+	_spawn_electric_sparks(duration)
+	SoundEffects.play_hunter_screech()
+
+func on_parried() -> float:
+	var stun_len: float = 3.0
+	if parry_decay_timer > 0.0:
+		parry_decay_step += 1
+		stun_len = 3.0 / pow(2.0, float(parry_decay_step))
+	else:
+		parry_decay_step = 0
+		stun_len = 3.0
+
+	state = State.STUNNED
+	stun_timer = stun_len
+	velocity = Vector3.ZERO
+	_spawn_electric_sparks(stun_len)
+	SoundEffects.play_hunter_screech()
+	return stun_len
+
+func _spawn_electric_sparks(duration: float) -> void:
+	var spark_node = Node3D.new()
+	spark_node.name = "StunSparks"
+	spark_node.position = Vector3(0, 1.4, 0)
+	add_child(spark_node)
+
+	var light = OmniLight3D.new()
+	light.light_color = Color(0.3, 0.85, 1.0)
+	light.light_energy = 2.5
+	light.omni_range = 4.5
+	spark_node.add_child(light)
+
+	var spark_mat = StandardMaterial3D.new()
+	spark_mat.albedo_color = Color(0.4, 0.9, 1.0)
+	spark_mat.emission_enabled = true
+	spark_mat.emission = Color(0.5, 0.95, 1.0)
+	spark_mat.emission_energy_multiplier = 3.5
+
+	var sparks: Array[MeshInstance3D] = []
+	for i in range(12):
+		var sp = MeshInstance3D.new()
+		var cyl = CylinderMesh.new()
+		cyl.top_radius = 0.008
+		cyl.bottom_radius = 0.008
+		cyl.height = 0.22
+		sp.mesh = cyl
+		sp.material_override = spark_mat
+		spark_node.add_child(sp)
+		sparks.append(sp)
+
+	var tw = create_tween()
+	tw.tween_method(func(t: float):
+		if not is_instance_valid(spark_node): return
+		light.light_energy = randf_range(1.5, 3.0)
+		for sp in sparks:
+			if is_instance_valid(sp):
+				sp.position = Vector3(randf_range(-0.6, 0.6), randf_range(-0.6, 0.6), randf_range(-0.6, 0.6))
+				sp.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	, 0.0, duration, duration)
+	tw.tween_callback(spark_node.queue_free)
 
 func on_devoured_prey() -> void:
 	devour_pause_timer = 0.9
@@ -544,27 +644,57 @@ func on_player_entered_locker(locker_node: Node3D) -> void:
 	if not active or state == State.DORMANT or state == State.KILL:
 		return
 	hide_seek_locker = locker_node
-	var corridor_pos: Vector3 = locker_node.global_position + locker_node.global_transform.basis.z * 2.8
-	corridor_pos.y = global_position.y
-	hide_seek_target = corridor_pos
+	var fwd_l = locker_node.global_transform.basis.z
+	var front_pos = locker_node.global_position + fwd_l * 1.55
+	front_pos.y = global_position.y
+	hide_seek_target = front_pos
 
 	var dist = global_position.distance_to(locker_node.global_position)
 	var has_los = _has_line_of_sight_to(locker_node.global_position + Vector3(0, 1.2, 0))
 
-	if final_mode or (dist < 16.0 and has_los):
-		saw_player_hide = (dist < 10.5 and has_los) or final_mode
-		state = State.HIDE_SEEK
-		hide_seek_timer = 3.8
+	# Did Hunter see player hide?
+	saw_player_hide = (dist < 15.0 and has_los) or final_mode
+
+	if saw_player_hide:
+		state = State.FEIGN_LOCKER_KILL
+		feign_kill_stage = 0
+		feign_kill_timer = 0.0
+		feign_scratch_count = 0
 	else:
-		saw_player_hide = false
 		state = State.ROAM
 		_pick_roam_dir_away_from(locker_node.global_position)
 
 func on_player_exited_locker() -> void:
 	if not active or state == State.DORMANT or state == State.KILL:
 		return
-	if state == State.ROAM or state == State.HIDE_SEEK:
+	if state == State.ROAM or state == State.HIDE_SEEK or state == State.FEIGN_LOCKER_KILL:
 		state = State.CHASE
+
+func freeze_by_hanger(duration: float = 6.0) -> void:
+	if state == State.KILL:
+		return
+	state = State.HANGER_SNARED
+	hanger_snare_timer = duration
+	velocity = Vector3.ZERO
+	SoundEffects.play_hunter_screech()
+
+func release_from_hanger() -> void:
+	if state == State.HANGER_SNARED:
+		state = State.CHASE
+		hanger_snare_timer = 0.0
+		SoundEffects.play_hunter_screech()
+
+func _adapt_vertical_position(delta: float) -> void:
+	if not is_inside_tree() or state == State.KILL or state == State.HANGER_SNARED:
+		return
+	var space = get_world_3d().direct_space_state
+	var from_pos = Vector3(global_position.x, global_position.y + 3.0, global_position.z)
+	var to_pos = Vector3(global_position.x, global_position.y - 6.0, global_position.z)
+	var query = PhysicsRayQueryParameters3D.create(from_pos, to_pos, 1)
+	var hit = space.intersect_ray(query)
+	if hit and not hit.is_empty():
+		var target_y = hit.position.y
+		global_position.y = lerpf(global_position.y, target_y, min(1.0, delta * 12.0))
 
 func _has_line_of_sight_to(target_pos: Vector3) -> bool:
 	var space_state = get_world_3d().direct_space_state
@@ -590,6 +720,23 @@ func start_kill(style: String = "claw", reason: String = "HARVESTED BY SUBJECT Z
 		return
 	if player and player.get("god_mode"):
 		return
+
+	var hud_node = get_tree().root.find_child("HUD", true, false)
+
+	# Baton Guard & Parry Defense Check (unless caught inside locker)
+	if player and is_instance_valid(player) and style != "locker_stab" and player.has_method("is_baton_defending") and player.is_baton_defending():
+		if player.is_baton_parrying():
+			var s_dur = on_parried()
+			player.on_successful_parry(self)
+			if hud_node and hud_node.has_method("show_toast"):
+				hud_node.show_toast("⚡ PERFECT PARRY! SUBJECT ZERO DEFLECTED & STUNNED (%.2fs)!" % s_dur, Color(0.2, 1.0, 0.5))
+			return
+		elif player.is_baton_blocking():
+			player.on_successful_block(self)
+			state = State.ROAM
+			roam_timer = 2.0
+			return
+
 	state = State.KILL
 	kill_style = style
 	kill_reason = reason
@@ -598,11 +745,15 @@ func start_kill(style: String = "claw", reason: String = "HARVESTED BY SUBJECT Z
 	velocity = Vector3.ZERO
 
 	if player and is_instance_valid(player):
-		if player.get("is_hiding") and is_instance_valid(hide_seek_locker):
-			# Pull player out of locker door to face Hunter
+		if style == "locker_stab" and is_instance_valid(hide_seek_locker):
+			var right_l = hide_seek_locker.global_transform.basis.x
+			global_position = hide_seek_locker.global_position + right_l * 1.15
+			global_position.y = player.global_position.y
+			rotation.y = atan2(right_l.x, right_l.z) + PI
+		elif player.get("is_hiding") and is_instance_valid(hide_seek_locker):
 			var fwd_l = hide_seek_locker.global_transform.basis.z
 			global_position = hide_seek_locker.global_position + fwd_l * 1.65
-			global_position.y = 0.0
+			global_position.y = player.global_position.y
 		else:
 			# Place Hunter 1.65m in front of player along direction from player to Hunter
 			var dir = global_position - player.global_position
@@ -617,7 +768,6 @@ func start_kill(style: String = "claw", reason: String = "HARVESTED BY SUBJECT Z
 		var to_p = player.global_position - global_position
 		rotation.y = atan2(-to_p.x, -to_p.z)
 
-		var hud_node = get_tree().root.find_child("HUD", true, false)
 		if hud_node and hud_node.has_method("flash_damage"):
 			hud_node.flash_damage()
 		SoundEffects.play_hunter_screech()
@@ -635,27 +785,10 @@ func _build_hunter_mesh() -> void:
 	mesh_root.name = "HunterVisual"
 	add_child(mesh_root)
 
-	var skin_mat = StandardMaterial3D.new()
-	skin_mat.albedo_color = Color(0.10, 0.05, 0.06)
-	skin_mat.roughness = 0.42
-	skin_mat.metallic = 0.08
-	skin_mat.emission_enabled = true
-	skin_mat.emission = Color(0.03, 0.0, 0.008)
-
-	var wet_mat = StandardMaterial3D.new()
-	wet_mat.albedo_color = Color(0.35, 0.03, 0.05)
-	wet_mat.roughness = 0.16
-	wet_mat.metallic = 0.15
-	wet_mat.emission_enabled = true
-	wet_mat.emission = Color(0.14, 0.008, 0.015)
-
-	var bone_mat = StandardMaterial3D.new()
-	bone_mat.albedo_color = Color(0.78, 0.72, 0.62)
-	bone_mat.roughness = 0.50
-
-	var dark_mat = StandardMaterial3D.new()
-	dark_mat.albedo_color = Color(0.015, 0.004, 0.008)
-	dark_mat.roughness = 0.95
+	var skin_mat = VisualMaterialFactory.create_flesh_material(Color(0.12, 0.07, 0.08), false)
+	var wet_mat = VisualMaterialFactory.create_flesh_material(Color(0.38, 0.04, 0.06), true)
+	var bone_mat = VisualMaterialFactory.create_bone_material(Color(0.78, 0.72, 0.62))
+	var dark_mat = VisualMaterialFactory.create_chitin_material(Color(0.04, 0.02, 0.03), 0.35, 0.18)
 
 	eye_mat = StandardMaterial3D.new()
 	eye_mat.albedo_color = Color(1.0, 0.0, 0.09)
@@ -1110,10 +1243,16 @@ func _physics_process(delta: float) -> void:
 		cloak_repel_timer = max(0.0, cloak_repel_timer - delta)
 
 	if not active or state == State.DORMANT:
+		# Suspended dormant in BioTank green preservation fluid
+		velocity = Vector3.ZERO
 		return
 
 	if state == State.KILL:
 		_update_kill_sequence(delta)
+		return
+
+	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+		velocity = Vector3.ZERO
 		return
 
 	if frozen_by_dev:
@@ -1143,7 +1282,13 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		if stun_timer <= 0.0:
 			state = State.ROAM if (player and (bool(player.get("is_hiding")) or bool(player.get("is_inside_cloak")))) else State.CHASE
+			parry_decay_timer = 6.0
 		return
+
+	if parry_decay_timer > 0.0:
+		parry_decay_timer = max(0.0, parry_decay_timer - delta)
+		if parry_decay_timer <= 0.0:
+			parry_decay_step = 0
 
 	if state == State.AMBUSH:
 		ambush_timer -= delta
@@ -1221,8 +1366,64 @@ func _physics_process(delta: float) -> void:
 						SoundEffects.play_heavy_step()
 				return
 
+	if state == State.HANGER_SNARED:
+		hanger_snare_timer -= delta
+		velocity = Vector3.ZERO
+		rotation.y += sin(anim_time * 8.0) * delta * 2.2
+		if hanger_snare_timer <= 0.0:
+			release_from_hanger()
+		return
+
+	if state == State.FEIGN_LOCKER_KILL:
+		if not is_instance_valid(hide_seek_locker):
+			state = State.ROAM
+			return
+		feign_kill_timer += delta
+		var fwd_l = hide_seek_locker.global_transform.basis.z
+		var right_l = hide_seek_locker.global_transform.basis.x
+		var front_pos = hide_seek_locker.global_position + fwd_l * 1.55
+		front_pos.y = global_position.y
+		var side_pos = hide_seek_locker.global_position + right_l * 1.5 + fwd_l * 0.25
+		side_pos.y = global_position.y
+
+		if feign_kill_stage == 0:
+			var to_front = front_pos - global_position
+			to_front.y = 0.0
+			if to_front.length() > 0.4:
+				global_position += to_front.normalized() * min(to_front.length(), delta * 3.6)
+				rotation.y = lerp_angle(rotation.y, atan2(-fwd_l.x, -fwd_l.z), delta * 8.0)
+			else:
+				feign_kill_stage = 1
+				feign_kill_timer = 0.0
+				feign_scratch_count = 0
+		elif feign_kill_stage == 1:
+			rotation.y = lerp_angle(rotation.y, atan2(-fwd_l.x, -fwd_l.z), delta * 12.0)
+			var expected_count = int(feign_kill_timer / 0.55)
+			if expected_count > feign_scratch_count and feign_scratch_count < 3:
+				feign_scratch_count += 1
+				SoundEffects.play(SoundEffects.snd_click, 3.5, 0.45)
+				SoundEffects.play(SoundEffects.snd_growl, -1.0, 1.2)
+			if feign_kill_timer >= 2.1:
+				feign_kill_stage = 2
+				feign_kill_timer = 0.0
+		elif feign_kill_stage == 2:
+			var to_side = side_pos - global_position
+			to_side.y = 0.0
+			if to_side.length() > 0.35:
+				global_position += to_side.normalized() * min(to_side.length(), delta * 2.8)
+				rotation.y = lerp_angle(rotation.y, atan2(to_side.x, to_side.z), delta * 6.0)
+			if feign_kill_timer >= 1.35 or to_side.length() <= 0.35:
+				feign_kill_stage = 3
+				feign_kill_timer = 0.0
+		elif feign_kill_stage == 3:
+			start_kill("locker_stab", "THE HUNTER SAW YOU HIDE — IT FEIGNED DEPARTURE BEFORE IMPALING YOU THROUGH THE LOCKER WALL!")
+			return
+		_adapt_vertical_position(delta)
+		return
+
 	# Check if player is hiding in Locker or Cloak
-	var player_hiding: bool = player != null and (bool(player.get("is_hiding")) or bool(player.get("is_inside_cloak")))
+	var player_in_locker: bool = player != null and bool(player.get("is_hiding"))
+	var player_hiding: bool = player != null and (player_in_locker or bool(player.get("is_inside_cloak")))
 	if player_hiding and state == State.CHASE:
 		state = State.ROAM
 		_pick_roam_dir_away_from(global_position + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)))
@@ -1230,7 +1431,7 @@ func _physics_process(delta: float) -> void:
 		state = State.CHASE
 
 	# Check close-range catch / windup trigger even before checking step movement
-	if state == State.CHASE and player and not player_hiding:
+	if state == State.CHASE and player and not player_hiding and not bool(player.get("is_dead")) and not bool(player.get("in_death_sequence")):
 		var to_p = player.global_position - global_position
 		var dist_2d = Vector2(to_p.x, to_p.z).length()
 		var dy = abs(player.global_position.y - global_position.y)
@@ -1252,16 +1453,35 @@ func _physics_process(delta: float) -> void:
 	if player and is_instance_valid(player) and "last_frame_move_dist" in player:
 		player_moved_dist = float(player.get("last_frame_move_dist"))
 
-	if state != State.HIDE_SEEK and cloak_repel_timer <= 0.0 and player_moved_dist <= 0.0015 and not overtime_rage:
-		velocity = Vector3.ZERO
-		return
+	var hunter_can_roam_autonomous: bool = player_in_locker and state == State.ROAM
+	var mp_active: bool = false
+	var mp_freeze: bool = false
+	var net_mgr = get_node_or_null("/root/NetworkManager")
+	if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+		mp_active = true
+		if net_mgr.has_method("is_any_player_in_locker") and net_mgr.is_any_player_in_locker():
+			hunter_can_roam_autonomous = true
+		elif net_mgr.has_method("should_monsters_freeze"):
+			mp_freeze = net_mgr.should_monsters_freeze(global_position)
+
+	if state != State.HIDE_SEEK and cloak_repel_timer <= 0.0 and not overtime_rage and not hunter_can_roam_autonomous:
+		if mp_active:
+			if mp_freeze:
+				velocity = Vector3.ZERO
+				return
+		elif player_moved_dist <= 0.0015:
+			velocity = Vector3.ZERO
+			return
 
 	var move_mult: float = GameData.HUNTER_MULT * (1.55 if overtime_rage else (1.20 if final_mode else 1.0))
 	var budget: float = player_moved_dist * move_mult
+	if mp_active and not mp_freeze and budget < delta * 4.2:
+		budget = delta * 4.2
+	if hunter_can_roam_autonomous and budget < delta * 3.8:
+		budget = delta * 3.8
 	if cloak_repel_timer > 0.0 and budget < delta * 5.2:
 		budget = max(budget, delta * 5.2)
 	if overtime_rage and budget < delta * 6.5:
-		# After 200 steps (0 steps left), Subject Zero enters Overtime Rage and closes any remaining gap relentlessly
 		budget = max(budget, delta * 6.8)
 
 	var prev_pos := global_position
@@ -1286,6 +1506,7 @@ func _physics_process(delta: float) -> void:
 			step_sound_accum = 0.0
 			if player and global_position.distance_to(player.global_position) < 28.0:
 				SoundEffects.play_heavy_step()
+		_adapt_vertical_position(delta)
 		return
 
 	var desired_dir := Vector3.ZERO
@@ -1324,12 +1545,28 @@ func _physics_process(delta: float) -> void:
 						_pick_roam_dir_away_from(global_position)
 
 	elif state == State.ROAM:
-		roam_timer -= delta
-		if roam_timer <= 0.0:
-			var dirs = [Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT]
-			roam_dir = dirs[randi() % dirs.size()].rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
-			roam_timer = randf_range(2.5, 4.8)
-		desired_dir = roam_dir
+		if player and player_in_locker:
+			var d_to_locker = global_position.distance_to(player.global_position)
+			if d_to_locker < 47.0:
+				var away = (global_position - player.global_position)
+				away.y = 0.0
+				if away.length_squared() < 0.1:
+					away = Vector3.FORWARD
+				desired_dir = away.normalized()
+			else:
+				roam_timer -= delta
+				if roam_timer <= 0.0:
+					var dirs = [Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT]
+					roam_dir = dirs[randi() % dirs.size()].rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
+					roam_timer = randf_range(2.5, 4.8)
+				desired_dir = roam_dir
+		else:
+			roam_timer -= delta
+			if roam_timer <= 0.0:
+				var dirs = [Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT]
+				roam_dir = dirs[randi() % dirs.size()].rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
+				roam_timer = randf_range(2.5, 4.8)
+			desired_dir = roam_dir
 		frame_speed *= 0.85
 
 	elif state == State.CHASE and player:
@@ -1365,6 +1602,8 @@ func _physics_process(delta: float) -> void:
 		if player and global_position.distance_to(player.global_position) < 28.0:
 			SoundEffects.play_heavy_step()
 
+	_adapt_vertical_position(delta)
+
 func _update_kill_sequence(delta: float) -> void:
 	kill_timer += delta
 	var t = kill_timer
@@ -1383,14 +1622,14 @@ func _update_kill_sequence(delta: float) -> void:
 func _steer_around_walls(dir: Vector3) -> Vector3:
 	var space_state = get_world_3d().direct_space_state
 	var origin = global_position + Vector3(0, 1.0, 0)
-	var q_front = PhysicsRayQueryParameters3D.create(origin, origin + dir * 2.1, 1)
+	var q_front = PhysicsRayQueryParameters3D.create(origin, origin + dir * 2.1, 1 | 8)
 	if space_state.intersect_ray(q_front).is_empty():
 		return dir
 
 	var best_dir := dir
 	for angle_deg in [35.0, -35.0, 65.0, -65.0, 95.0, -95.0]:
 		var cand = dir.rotated(Vector3.UP, deg_to_rad(angle_deg))
-		var q = PhysicsRayQueryParameters3D.create(origin, origin + cand * 2.4, 1)
+		var q = PhysicsRayQueryParameters3D.create(origin, origin + cand * 2.4, 1 | 8)
 		if space_state.intersect_ray(q).is_empty():
 			return cand
 	return best_dir

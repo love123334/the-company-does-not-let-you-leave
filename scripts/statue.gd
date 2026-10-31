@@ -7,13 +7,17 @@ extends CharacterBody3D
 
 signal player_caught(reason: String)
 
+const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
+
 var player: CharacterBody3D = null
 var active: bool = false
 var frozen_by_dev: bool = false
 var is_killing: bool = false
 var kill_anim_timer: float = 0.0
+var kill_threat_timer: float = 0.0
 var move_speed: float = 7.4
 var sound_cooldown: float = 0.0
+var presence_sound_timer: float = randf_range(2.5, 5.5)
 
 var mesh_root: Node3D = null
 var left_arm: Node3D = null
@@ -23,7 +27,7 @@ var head_node: Node3D = null
 func _ready() -> void:
 	add_to_group("statues")
 	collision_layer = 4
-	collision_mask = 1
+	collision_mask = 1 | 8
 	_build_statue_mesh()
 
 func activate() -> void:
@@ -38,24 +42,12 @@ func _build_statue_mesh() -> void:
 	mesh_root.name = "StatueVisual"
 	add_child(mesh_root)
 
-	var stone_mat = StandardMaterial3D.new()
-	stone_mat.albedo_color = Color(0.40, 0.39, 0.37)
-	stone_mat.roughness = 0.94
-	stone_mat.metallic = 0.04
-
-	var dark_stone_mat = StandardMaterial3D.new()
-	dark_stone_mat.albedo_color = Color(0.22, 0.21, 0.20)
-	dark_stone_mat.roughness = 0.97
-
+	var stone_mat = VisualMaterialFactory.create_stone_material(Color(0.40, 0.39, 0.37))
+	var dark_stone_mat = VisualMaterialFactory.create_stone_material(Color(0.22, 0.21, 0.20))
 	var hollow_mat = StandardMaterial3D.new()
 	hollow_mat.albedo_color = Color(0.015, 0.005, 0.008)
 	hollow_mat.roughness = 1.0
-
-	var blood_tear_mat = StandardMaterial3D.new()
-	blood_tear_mat.albedo_color = Color(0.38, 0.02, 0.04)
-	blood_tear_mat.roughness = 0.35
-	blood_tear_mat.emission_enabled = true
-	blood_tear_mat.emission = Color(0.12, 0.0, 0.01)
+	var blood_tear_mat = VisualMaterialFactory.create_flesh_material(Color(0.38, 0.02, 0.04), true)
 
 	# Base Plinth + Dust Ring
 	var plinth = MeshInstance3D.new()
@@ -235,7 +227,7 @@ func _physics_process(delta: float) -> void:
 		rotation.y = atan2(-rdir.x, -rdir.z)
 		return
 
-	if player.get("is_hiding") or player.get("is_inside_cloak") or player.get("in_death_sequence") or player.get("in_secret_corridor"):
+	if player.get("is_hiding") or player.get("is_inside_cloak") or player.get("in_death_sequence") or player.get("is_dead") or player.get("in_secret_corridor"):
 		velocity = Vector3.ZERO
 		return
 
@@ -243,18 +235,52 @@ func _physics_process(delta: float) -> void:
 	dir.y = 0.0
 	var dist = dir.length()
 
+	# Deep stone scraping across the floor to alert player to Observer presence nearby
+	if dist < 14.0 and not is_killing and not (player and bool(player.get("is_dead"))):
+		presence_sound_timer -= delta
+		if presence_sound_timer <= 0.0:
+			presence_sound_timer = randf_range(5.5, 9.5)
+			var vol = lerpf(0.0, -18.0, clampf(dist / 14.0, 0.0, 1.0))
+			SoundEffects.play_stone_drag(vol, randf_range(0.85, 0.98))
+
 	var observed := _is_observed_by_player()
 	if not observed:
-		if dist < 1.58 and abs(player.global_position.y - global_position.y) < 2.2:
-			_trigger_statue_kill()
-			return
+		var is_scrubbing_work = player and bool(player.get("is_scrubbing"))
+		if dist < 1.65 and abs(player.global_position.y - global_position.y) < 2.2:
+			if is_scrubbing_work:
+				# Protected while scrubbing floor spills: warn player with dragging sound instead of unfair instant death
+				if sound_cooldown <= 0.0:
+					SoundEffects.play_stone_drag(2.0, 1.1)
+					sound_cooldown = 1.5
+				kill_threat_timer = 0.0
+			else:
+				kill_threat_timer += delta
+				if kill_threat_timer >= 0.85:
+					_trigger_statue_kill()
+					return
+		else:
+			kill_threat_timer = max(0.0, kill_threat_timer - delta * 2.0)
 
 		# =========================================================================
 		# STEP-LINKED MOVEMENT RULE:
 		# Statues only glide forward when unwatched AND the player is moving!
 		# =========================================================================
 		var player_moved_dist: float = float(player.get("last_frame_move_dist")) if "last_frame_move_dist" in player else 0.0
-		if player_moved_dist <= 0.0015:
+		var mp_active: bool = false
+		var mp_freeze: bool = false
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+			mp_active = true
+			if net_mgr.has_method("is_any_player_in_locker") and net_mgr.is_any_player_in_locker():
+				mp_freeze = false
+			elif net_mgr.has_method("should_monsters_freeze"):
+				mp_freeze = net_mgr.should_monsters_freeze(global_position)
+
+		if mp_active:
+			if mp_freeze:
+				velocity = Vector3.ZERO
+				return
+		elif player_moved_dist <= 0.0015 or is_scrubbing_work:
 			velocity = Vector3.ZERO
 			return
 
@@ -275,14 +301,16 @@ func _physics_process(delta: float) -> void:
 			if head_node:
 				head_node.rotation.z = sin(Time.get_ticks_msec() * 0.007) * 0.16
 
-			if sound_cooldown <= 0.0 and dist < 16.0:
-				SoundEffects.play_stone_grind()
-				sound_cooldown = randf_range(0.65, 1.25)
+			if sound_cooldown <= 0.0 and dist < 18.0:
+				var vol = lerpf(0.0, -18.0, clampf(dist / 18.0, 0.0, 1.0))
+				SoundEffects.play_stone_drag(vol, randf_range(0.90, 1.05))
+				sound_cooldown = randf_range(1.6, 2.6)
 	else:
+		kill_threat_timer = 0.0
 		velocity = Vector3.ZERO
 
 func _trigger_statue_kill() -> void:
-	if is_killing or (player and player.get("god_mode")):
+	if is_killing or (player and (player.get("god_mode") or player.get("is_dead"))):
 		return
 	is_killing = true
 	kill_anim_timer = 0.0
@@ -299,7 +327,7 @@ func _trigger_statue_kill() -> void:
 		var to_p = player.global_position - global_position
 		rotation.y = atan2(-to_p.x, -to_p.z)
 
-		SoundEffects.play_stone_grind()
+		SoundEffects.play_stone_drag(3.0, 0.88)
 		SoundEffects.play(SoundEffects.snd_screech, 3.0, 1.2)
 		var hud_node = get_tree().root.find_child("HUD", true, false)
 		if hud_node and hud_node.has_method("flash_damage"):
@@ -312,29 +340,35 @@ func _trigger_statue_kill() -> void:
 	player_caught.emit(reason)
 
 func _is_observed_by_player() -> bool:
-	var cam = get_viewport().get_camera_3d()
-	if not cam:
-		return false
-
-	var to_statue = (global_position + Vector3(0, 1.2, 0)) - cam.global_position
-	var dist = to_statue.length()
-	if dist > 23.0:
-		return false
-
-	var cam_forward = -cam.global_transform.basis.z
-	var dot = cam_forward.dot(to_statue.normalized())
-	if dot < 0.28:
-		return false
-
 	var space_state = get_world_3d().direct_space_state
-	var query = PhysicsRayQueryParameters3D.create(
-		cam.global_position,
-		global_position + Vector3(0, 1.3, 0),
-		1
-	)
-	var result = space_state.intersect_ray(query)
-	if result.is_empty():
-		return true
+	var statue_head_pos = global_position + Vector3(0, 1.3, 0)
+
+	# 1. Check local player camera
+	var cam = get_viewport().get_camera_3d()
+	if cam and (player and not bool(player.get("is_dead"))):
+		var to_statue = statue_head_pos - cam.global_position
+		var dist = to_statue.length()
+		if dist <= 24.0:
+			var cam_forward = -cam.global_transform.basis.z
+			var dot = cam_forward.dot(to_statue.normalized())
+			if dot >= 0.26:
+				var q = PhysicsRayQueryParameters3D.create(cam.global_position, statue_head_pos, 1)
+				if space_state.intersect_ray(q).is_empty():
+					return true
+
+	# 2. Check remote players in multiplayer (quantum observation by teammates)
+	for r_node in get_tree().get_nodes_in_group("remote_players"):
+		if is_instance_valid(r_node) and not bool(r_node.get("is_dead")):
+			var r_head = r_node.global_position + Vector3(0, 1.55, 0)
+			var to_st = statue_head_pos - r_head
+			var r_dist = to_st.length()
+			if r_dist <= 24.0:
+				var r_forward = -r_node.global_transform.basis.z
+				var r_dot = r_forward.dot(to_st.normalized())
+				if r_dot >= 0.26:
+					var rq = PhysicsRayQueryParameters3D.create(r_head, statue_head_pos, 1)
+					if space_state.intersect_ray(rq).is_empty():
+						return true
 	return false
 
 func on_repelled_by_cloak(cloak_pos: Vector3) -> void:

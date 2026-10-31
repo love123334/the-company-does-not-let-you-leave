@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://c112233445566"]
+[gd_scene load_steps=15 format=3 uid="uid://c112233445566"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/map_generator.gd" id="2_map"]
@@ -12,15 +12,31 @@
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
-background_color = Color(0.02, 0.03, 0.05, 1)
+background_color = Color(0.015, 0.02, 0.035, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.14, 0.17, 0.25, 1)
-ambient_light_energy = 0.28
+ambient_light_color = Color(0.12, 0.15, 0.22, 1)
+ambient_light_energy = 0.32
 tonemap_mode = 3
+tonemap_exposure = 1.05
+tonemap_white = 1.0
+ssao_enabled = true
+ssao_radius = 1.3
+ssao_intensity = 2.4
+ssao_power = 1.5
+ssao_detail = 0.5
+glow_enabled = true
+glow_levels/1 = 0.8
+glow_levels/2 = 0.6
+glow_levels/3 = 1.0
+glow_levels/5 = 0.4
+glow_intensity = 0.85
+glow_bloom = 0.18
+glow_blend_mode = 0
 fog_enabled = true
-fog_light_color = Color(0.02, 0.03, 0.06, 1)
-fog_density = 0.005
-fog_depth_begin = 4.0
+fog_light_color = Color(0.015, 0.02, 0.04, 1)
+fog_density = 0.008
+fog_depth_begin = 3.5
+fog_depth_end = 28.0
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -31,6 +47,17 @@ shader = ExtResource("6_vig")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_crt"]
 shader = ExtResource("7_crt")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_topleft"]
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+bg_color = Color(0.02, 0.04, 0.07, 0.88)
+border_width_left = 4
+border_color = Color(0.2, 0.65, 0.95, 0.9)
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -498,14 +525,15 @@ mouse_filter = 2
 
 [node name="TopLeftPanel" type="PanelContainer" parent="HUD/GameHud"]
 layout_mode = 0
-offset_left = 20.0
+offset_left = 24.0
 offset_top = 20.0
-offset_right = 340.0
-offset_bottom = 155.0
+offset_right = 490.0
+offset_bottom = 230.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_topleft")
 
 [node name="VBox" type="VBoxContainer" parent="HUD/GameHud/TopLeftPanel"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="TitleRow" type="HBoxContainer" parent="HUD/GameHud/TopLeftPanel/VBox"]
 layout_mode = 2
@@ -518,16 +546,21 @@ color = Color(0.2, 0.85, 0.35, 1)
 
 [node name="FacilityTitle" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 1)
+theme_override_colors/font_color = Color(0.96, 0.98, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "FACILITY: SUB-LEVEL 4 [STABLE]"
 
 [node name="ObjectiveList" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.75, 0.82, 1)
+theme_override_colors/font_color = Color(0.92, 0.97, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/line_spacing = 4
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 15
 text = "• Mop Toxic Spills: 0 / 3
 • Science Terminals Checked: 0 / 2
 • Relics / Artifacts Recovered: 0
@@ -535,9 +568,11 @@ text = "• Mop Toxic Spills: 0 / 3
 
 [node name="DistWarning" type="Label" parent="HUD/GameHud/TopLeftPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.3, 0.9, 0.4, 1)
+theme_override_colors/font_color = Color(0.35, 0.95, 0.45, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 14
 text = "STATUS: WORK SHIFT IN PROGRESS"
 
 [node name="TopRightBox" type="PanelContainer" parent="HUD/GameHud"]
@@ -582,9 +617,9 @@ layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = -120.0
-offset_right = 220.0
+offset_left = 24.0
+offset_top = -140.0
+offset_right = 260.0
 offset_bottom = -20.0
 grow_vertical = 0
 theme_override_constants/separation = 6
@@ -593,10 +628,13 @@ theme_override_constants/separation = 6
 layout_mode = 2
 
 [node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/StaminaBox"]
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(75, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 13
 text = "STAMINA"
 
 [node name="Bar" type="ProgressBar" parent="HUD/GameHud/BottomLeft/StaminaBox"]
@@ -610,10 +648,13 @@ show_percentage = false
 layout_mode = 2
 
 [node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/MopBox"]
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(75, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 13
 text = "MOP"
 
 [node name="Bar" type="ProgressBar" parent="HUD/GameHud/BottomLeft/MopBox"]
@@ -627,17 +668,22 @@ show_percentage = false
 layout_mode = 2
 
 [node name="Label" type="Label" parent="HUD/GameHud/BottomLeft/FlashlightBox"]
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(75, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 13
 text = "TORCH [F]"
 
 [node name="Status" type="Label" parent="HUD/GameHud/BottomLeft/FlashlightBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.2, 0.9, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 13
 text = "ON"
 
 [node name="Reticle" type="Label" parent="HUD/GameHud"]
@@ -666,15 +712,17 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -150.0
+offset_left = -250.0
 offset_top = 25.0
-offset_right = 150.0
-offset_bottom = 50.0
+offset_right = 250.0
+offset_bottom = 60.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_colors/font_color = Color(1, 0.9, 0.2, 1)
+theme_override_colors/font_color = Color(1, 0.95, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
 theme_override_fonts/font = ExtResource("9_techmono")
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 16
 text = "[E] Interact"
 horizontal_alignment = 1
 

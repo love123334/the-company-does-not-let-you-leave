@@ -1,17 +1,20 @@
 extends CharacterBody3D
 
-# The Cloak (Floating Shroud Specimen — Night 4+)
-# - Looks like a billowing, undulating dark fabric shroud drifting smoothly along corridors.
-# - First sighting triggers a scare sting & toast, then reveals itself to be neutral.
-# - Moving Camouflage: Player can walk inside the Cloak (matching its pace, no button press)
+# The Cloak (Floating Ghost Girl Specimen — Night 4+)
+# - Elegant feminine ghost girl draped in a flowing pearlescent white shroud.
+# - Calm, graceful silhouette: draped head veil with peaceful arched eye markings,
+#   distinct feminine hourglass curves (bust, cinched waist with ribbon sash, flared hips),
+#   long flowing kimono/bell sleeves with delicate hands, and a flared trumpet gown hem.
+# - Neutral specimen gliding gracefully along corridors.
+# - Moving Camouflage: Player can walk inside / beneath her flowing shroud (matching her pace)
 #   to hide from all other monsters.
-# - Repulsion Field: Pushes away Hunter, Statues, Crawlers, and Cultists within 3.9m,
-#   forcing Hunter and Statues to turn away and abandon pursuit.
+# - Repulsion Field: Pushes away Hunter, Statues, Crawlers, and Cultists within 3.9m.
 # - Death 1 (Suffocation when hiding inside too long): Player gradually struggles to breathe,
-#   vision progressively blurs/darkens, hyperventilates rapidly, and dies of asphyxiation.
+#   vision progressively blurs and darkens, hyperventilates rapidly, and dies of asphyxiation.
 # - Death 2 (Strangulation when struck by mop or witnessing another Cloak struck):
-#   Turns hostile, rushes the player, wraps dark cloth coils tightly around the player's body,
-#   and strangles their neck to death.
+#   Turns hostile, peaceful eye markings vanish as fiery crimson spectral eyes blaze,
+#   silk shroud darkens with wrathful crimson, silk ribbons wrap tightly around player's body,
+#   and strangle their neck to death.
 
 signal player_killed(reason: String)
 
@@ -21,6 +24,9 @@ const MAX_DIGEST_TIME: float = 6.5
 const WITNESS_RADIUS: float = 18.0
 const _N4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
+const GHOST_MODEL = preload("res://models/ghost_girl.glb")
+const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
+
 var player: CharacterBody3D = null
 var maze_grid: Array = []
 var active: bool = true
@@ -29,6 +35,9 @@ var is_hostile: bool = false
 var is_killing: bool = false
 var kill_mode: String = "" # "suffocate" or "strangle"
 var kill_anim_timer: float = 0.0
+var hanger_snare_timer: float = 0.0
+var is_snared_by_hanger: bool = false
+var stun_timer: float = 0.0
 
 var patrol_speed: float = 3.45
 var hostile_speed: float = 6.85
@@ -41,13 +50,16 @@ var target_cell: Vector2i = Vector2i(-1, -1)
 var last_step_dir: Vector2i = Vector2i(0, 1)
 
 var mesh_root: Node3D = null
+var model_instance: Node3D = null
+var anim_player: AnimationPlayer = null
+var ghost_mesh: MeshInstance3D = null
+
 var shroud_panels: Array[Node3D] = []
 var ribbon_strips: Array[Node3D] = []
 var strangle_coils: Array[Node3D] = []
-var eye_nodes: Array[MeshInstance3D] = []
+
 var cloth_mat: StandardMaterial3D = null
 var inner_mat: StandardMaterial3D = null
-var eye_mat: StandardMaterial3D = null
 var aura_light: OmniLight3D = null
 
 func _ready() -> void:
@@ -106,76 +118,50 @@ func _build_cloak_mesh() -> void:
 	mesh_root.name = "CloakVisual"
 	add_child(mesh_root)
 
-	cloth_mat = StandardMaterial3D.new()
-	cloth_mat.albedo_color = Color(0.08, 0.07, 0.12, 0.93)
-	cloth_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	cloth_mat.roughness = 0.86
-	cloth_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	cloth_mat.emission_enabled = true
-	cloth_mat.emission = Color(0.09, 0.06, 0.15)
-	cloth_mat.emission_energy_multiplier = 0.35
+	# 1. High-fidelity spectral silk with procedural woven normal map, depth shading & rim highlights
+	cloth_mat = VisualMaterialFactory.create_spectral_silk(false)
 
 	inner_mat = StandardMaterial3D.new()
-	inner_mat.albedo_color = Color(0.14, 0.04, 0.18, 0.88)
-	inner_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	inner_mat.roughness = 0.84
+	inner_mat.albedo_color = Color(0.12, 0.02, 0.04, 0.95)
 	inner_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	inner_mat.normal_enabled = true
+	inner_mat.normal_texture = VisualMaterialFactory.get_cloth_normal()
 	inner_mat.emission_enabled = true
-	inner_mat.emission = Color(0.22, 0.04, 0.28)
-	inner_mat.emission_energy_multiplier = 0.48
+	inner_mat.emission = Color(0.85, 0.05, 0.12)
+	inner_mat.emission_energy_multiplier = 1.4
 
-	eye_mat = StandardMaterial3D.new()
-	eye_mat.albedo_color = Color(1.0, 0.12, 0.18)
-	eye_mat.emission_enabled = true
-	eye_mat.emission = Color(1.0, 0.08, 0.14)
-	eye_mat.emission_energy_multiplier = 4.5
+	# 2. Instantiate Rigged Ghost Girl 3D Model with Skeleton and Animations
+	model_instance = GHOST_MODEL.instantiate()
+	model_instance.name = "GhostGirlModel"
+	# Flip 180 degrees so front of ghost faces forward (-Z direction in Godot)
+	model_instance.rotation.y = PI
+	mesh_root.add_child(model_instance)
 
-	# Upper billowing cowl / floating mantle dome
-	var cowl = MeshInstance3D.new()
-	var c_cyl = CylinderMesh.new()
-	c_cyl.top_radius = 0.24
-	c_cyl.bottom_radius = 0.86
-	c_cyl.height = 0.72
-	cowl.mesh = c_cyl
-	cowl.scale = Vector3(1.12, 1.0, 1.05)
-	cowl.position = Vector3(0, 2.22, 0)
-	cowl.material_override = cloth_mat
-	mesh_root.add_child(cowl)
+	anim_player = model_instance.find_child("AnimationPlayer", true, false)
+	if anim_player:
+		for a_name in anim_player.get_animation_list():
+			var a = anim_player.get_animation(a_name)
+			if a and not ("strangle" in a_name.to_lower()):
+				a.loop_mode = Animation.LOOP_LINEAR
+		_play_anim("idle")
 
-	# 16 Overlapping draped fabric folds forming a cohesive hollow shroud
-	var num_panels := 16
-	for i in range(num_panels):
-		var ang: float = float(i) * (TAU / float(num_panels))
-		var pivot = Node3D.new()
-		pivot.position = Vector3(cos(ang) * 0.72, 2.12, sin(ang) * 0.72)
-		pivot.rotation.y = -ang + PI * 0.5
-		pivot.set_meta("base_ang", ang)
-		mesh_root.add_child(pivot)
+	# Find skinned mesh and apply material
+	ghost_mesh = model_instance.find_child("GhostGirlMesh", true, false)
+	if not ghost_mesh:
+		ghost_mesh = model_instance.find_child("geometry_0", true, false)
+	if not ghost_mesh:
+		for child in model_instance.get_children():
+			if child is MeshInstance3D:
+				ghost_mesh = child
+				break
+			for sub in child.get_children():
+				if sub is MeshInstance3D:
+					ghost_mesh = sub
+					break
+	if ghost_mesh:
+		ghost_mesh.material_override = cloth_mat
 
-		var panel = MeshInstance3D.new()
-		var p_box = BoxMesh.new()
-		p_box.size = Vector3(0.42, 1.92, 0.03)
-		panel.mesh = p_box
-		panel.position = Vector3(0, -0.90, 0)
-		panel.material_override = cloth_mat if (i % 2 == 0) else inner_mat
-		pivot.add_child(panel)
-		shroud_panels.append(pivot)
-
-		# Lower tattered hem streamer hanging from each fold
-		var hem_pivot = Node3D.new()
-		hem_pivot.position = Vector3(0, -1.82, 0)
-		pivot.add_child(hem_pivot)
-
-		var hem = MeshInstance3D.new()
-		var h_box = BoxMesh.new()
-		h_box.size = Vector3(0.30, 0.52 + float(i % 3) * 0.15, 0.024)
-		hem.mesh = h_box
-		hem.position = Vector3(0, -0.24, 0)
-		hem.material_override = cloth_mat
-		hem_pivot.add_child(hem)
-		ribbon_strips.append(hem_pivot)
-
-	# 6 3D Constriction Cloth Coils (used when wrapping around the player's body & strangling their neck!)
+	# 3. Constriction Strangle Coils (Silk ribbon coils used during hostile strangulation kill)
 	for c_idx in range(6):
 		var coil_piv = Node3D.new()
 		coil_piv.position = Vector3(0, 0.75 + float(c_idx) * 0.18, 0)
@@ -193,25 +179,29 @@ func _build_cloak_mesh() -> void:
 		coil_piv.add_child(coil_mesh)
 		strangle_coils.append(coil_piv)
 
-	# Hidden crimson eyes inside the upper fold (invisible while neutral)
-	for sx in [-1.0, 1.0]:
-		var eye = MeshInstance3D.new()
-		var es = SphereMesh.new()
-		es.radius = 0.048
-		es.height = 0.096
-		eye.mesh = es
-		eye.position = Vector3(sx * 0.16, 2.02, -0.62)
-		eye.material_override = eye_mat
-		eye.visible = false
-		mesh_root.add_child(eye)
-		eye_nodes.append(eye)
-
+	# Ethereal moonlight aura light
 	aura_light = OmniLight3D.new()
-	aura_light.light_color = Color(0.48, 0.28, 0.78)
-	aura_light.light_energy = 0.85
-	aura_light.omni_range = 5.8
+	aura_light.light_color = Color(0.68, 0.78, 1.0)
+	aura_light.light_energy = 0.90
+	aura_light.omni_range = 5.2
 	aura_light.position = Vector3(0, 1.5, 0)
 	mesh_root.add_child(aura_light)
+
+func _play_anim(base_name: String, blend: float = 0.3) -> void:
+	if not anim_player:
+		return
+	var target_name := ""
+	if anim_player.has_animation(base_name):
+		target_name = base_name
+	else:
+		var low_base := base_name.to_lower()
+		for a_name in anim_player.get_animation_list():
+			var low_a = a_name.to_lower()
+			if low_a == low_base or low_a.ends_with("/" + low_base) or low_a.ends_with("|" + low_base) or low_base in low_a:
+				target_name = a_name
+				break
+	if target_name != "" and anim_player.current_animation != target_name:
+		anim_player.play(target_name, blend)
 
 func hit_by_mop() -> bool:
 	if is_killing:
@@ -237,45 +227,137 @@ func hit_by_mop() -> bool:
 				other.provoke_hostile(false)
 	return true
 
+func stun(duration: float) -> void:
+	stun_timer = max(stun_timer, duration)
+	velocity = Vector3.ZERO
+	_spawn_electric_sparks(duration)
+	SoundEffects.play_cloth_wrap()
+
+func _spawn_electric_sparks(duration: float) -> void:
+	var spark_node = Node3D.new()
+	spark_node.name = "StunSparks"
+	spark_node.position = Vector3(0, 1.4, 0)
+	add_child(spark_node)
+
+	var light = OmniLight3D.new()
+	light.light_color = Color(0.3, 0.85, 1.0)
+	light.light_energy = 2.2
+	light.omni_range = 3.5
+	spark_node.add_child(light)
+
+	var spark_mat = StandardMaterial3D.new()
+	spark_mat.albedo_color = Color(0.4, 0.9, 1.0)
+	spark_mat.emission_enabled = true
+	spark_mat.emission = Color(0.5, 0.95, 1.0)
+	spark_mat.emission_energy_multiplier = 3.5
+
+	var sparks: Array[MeshInstance3D] = []
+	for i in range(8):
+		var sp = MeshInstance3D.new()
+		var cyl = CylinderMesh.new()
+		cyl.top_radius = 0.007
+		cyl.bottom_radius = 0.007
+		cyl.height = 0.20
+		sp.mesh = cyl
+		sp.material_override = spark_mat
+		spark_node.add_child(sp)
+		sparks.append(sp)
+
+	var tw = create_tween()
+	tw.tween_method(func(t: float):
+		if not is_instance_valid(spark_node): return
+		light.light_energy = randf_range(1.2, 2.6)
+		for sp in sparks:
+			if is_instance_valid(sp):
+				sp.position = Vector3(randf_range(-0.5, 0.5), randf_range(-0.3, 0.3), randf_range(-0.5, 0.5))
+				sp.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	, 0.0, duration, duration)
+	tw.tween_callback(spark_node.queue_free)
+
 func provoke_hostile(direct_hit: bool = false) -> void:
 	if is_hostile:
 		return
 	is_hostile = true
-	for e in eye_nodes:
-		if is_instance_valid(e):
-			e.visible = true
-	if cloth_mat:
-		cloth_mat.albedo_color = Color(0.24, 0.02, 0.05, 0.96)
-		cloth_mat.emission = Color(0.35, 0.02, 0.06)
+
+	# Shift materials from pure white silk to ominous crimson wrath
+	cloth_mat = VisualMaterialFactory.create_spectral_silk(true)
+	if ghost_mesh:
+		ghost_mesh.material_override = cloth_mat
 	if inner_mat:
-		inner_mat.albedo_color = Color(0.48, 0.02, 0.06, 0.94)
-		inner_mat.emission = Color(0.88, 0.05, 0.12)
-		inner_mat.emission_energy_multiplier = 1.65
+		inner_mat.albedo_color = Color(0.15, 0.01, 0.03, 0.95)
+		inner_mat.emission = Color(0.95, 0.04, 0.10)
+		inner_mat.emission_energy_multiplier = 2.2
 	if aura_light:
 		aura_light.light_color = Color(1.0, 0.12, 0.18)
 		aura_light.light_energy = 2.8
 		aura_light.omni_range = 8.5
+
 	if direct_hit:
 		SoundEffects.play_hunter_screech()
 		SoundEffects.play_cloth_wrap()
 		var hud_node = get_tree().root.find_child("HUD", true, false)
 		if hud_node and hud_node.has_method("show_toast"):
-			hud_node.show_toast("⚠ YOU STRUCK THE CLOAK — IT IS LUNGING TO WRAP & STRANGLE YOU!", Color(1.0, 0.2, 0.25))
+			hud_node.show_toast("⚠ YOU STRUCK THE GHOST GIRL — HER SHROUD LUNGES TO WRAP & STRANGLE YOU!", Color(1.0, 0.2, 0.25))
+
+func reset_hostility() -> void:
+	is_hostile = false
+	is_killing = false
+	kill_mode = ""
+	kill_anim_timer = 0.0
+
+	# Restore materials to pure pearlescent white silk
+	cloth_mat = VisualMaterialFactory.create_spectral_silk(false)
+	if ghost_mesh:
+		ghost_mesh.material_override = cloth_mat
+	if inner_mat:
+		inner_mat.albedo_color = Color(0.12, 0.02, 0.04, 0.95)
+		inner_mat.emission = Color(0.85, 0.05, 0.12)
+		inner_mat.emission_energy_multiplier = 1.4
+	if aura_light:
+		aura_light.light_color = Color(0.75, 0.88, 1.0)
+		aura_light.light_energy = 1.45
+		aura_light.omni_range = 6.0
+
+func freeze_by_hanger(duration: float = 8.0) -> void:
+	is_snared_by_hanger = true
+	hanger_snare_timer = duration
+	velocity = Vector3.ZERO
+
+func release_from_hanger() -> void:
+	is_snared_by_hanger = false
+	hanger_snare_timer = 0.0
+	reset_hostility()
 
 func _physics_process(delta: float) -> void:
 	anim_time += delta
 	_animate_cloth(delta)
 
+	if is_snared_by_hanger:
+		hanger_snare_timer -= delta
+		velocity = Vector3.ZERO
+		_update_anim_playback(Vector3.ZERO)
+		if hanger_snare_timer <= 0.0:
+			release_from_hanger()
+		return
+
 	if is_killing:
 		kill_anim_timer += delta
 		velocity = Vector3.ZERO
+		_update_anim_playback(Vector3.ZERO)
 		if player and is_instance_valid(player):
-			# Keep Cloak wrapped directly around the player's body during the kill sequence!
+			# Keep shroud wrapped directly around the player's body during the kill sequence!
 			global_position = Vector3(player.global_position.x, player.global_position.y, player.global_position.z)
 		return
 
 	if not active or frozen_by_dev:
 		velocity = Vector3.ZERO
+		_update_anim_playback(Vector3.ZERO)
+		return
+
+	if stun_timer > 0.0:
+		stun_timer -= delta
+		velocity = Vector3.ZERO
+		_update_anim_playback(Vector3.ZERO)
 		return
 
 	# Always repel other monsters (Hunter, Statues, Crawlers, Cultists) that get too close!
@@ -289,7 +371,7 @@ func _physics_process(delta: float) -> void:
 			_check_first_sighting_scare()
 
 	# Check if player is inside or touching this Cloak
-	if player and is_instance_valid(player) and not bool(player.get("in_death_sequence")):
+	if player and is_instance_valid(player) and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")):
 		var p_diff = player.global_position - global_position
 		p_diff.y = 0.0
 		var p_dist = p_diff.length()
@@ -353,6 +435,21 @@ func _physics_process(delta: float) -> void:
 	if move_dir.length_squared() > 0.01:
 		var target_yaw = atan2(-move_dir.x, -move_dir.z)
 		rotation.y = lerp_angle(rotation.y, target_yaw, delta * (9.0 if is_hostile else 5.0))
+
+	# Update animation based on movement
+	_update_anim_playback(move_dir)
+
+func _update_anim_playback(move_dir: Vector3) -> void:
+	if not anim_player:
+		return
+	if is_killing and kill_mode == "strangle":
+		_play_anim("strangle", 0.25)
+	elif is_hostile:
+		_play_anim("chase", 0.2)
+	elif move_dir.length_squared() > 0.01:
+		_play_anim("walk", 0.3)
+	else:
+		_play_anim("idle", 0.3)
 
 func _pick_next_corridor_cell(allow_any: bool) -> void:
 	if maze_grid.is_empty():
@@ -442,10 +539,10 @@ func _check_first_sighting_scare() -> void:
 		player.add_camera_shake(0.32)
 	var hud_node = get_tree().root.find_child("HUD", true, false)
 	if hud_node and hud_node.has_method("show_toast"):
-		hud_node.show_toast("⚠ WHAT IS THAT?! A floating black shroud drifting down the hall!", Color(0.85, 0.55, 1.0))
+		hud_node.show_toast("⚠ WHAT IS THAT?! An ethereal white ghost shroud drifting down the hall!", Color(0.85, 0.75, 1.0))
 		get_tree().create_timer(3.4).timeout.connect(func():
 			if is_instance_valid(hud_node) and not is_hostile:
-				hud_node.show_toast("...It's neutral. Walk inside the Cloak at its pace to hide from other monsters—just don't stay until you suffocate!", Color(0.55, 0.9, 1.0))
+				hud_node.show_toast("...She's neutral. Walk beneath her flowing shroud to hide from other monsters—just don't stay until you suffocate!", Color(0.65, 0.92, 1.0))
 		)
 
 # Death 1: Player stayed inside the Cloak too long -> gradual asphyxiation, blurred vision, rapid gasping -> death
@@ -456,7 +553,7 @@ func trigger_suffocation_kill() -> void:
 	kill_mode = "suffocate"
 	kill_anim_timer = 0.0
 	velocity = Vector3.ZERO
-	var reason := "SUFFOCATED INSIDE THE CLOAK — YOU RAN OUT OF BREATH AND BLACKED OUT."
+	var reason := "SUFFOCATED INSIDE THE GHOST'S SHROUD — YOU RAN OUT OF BREATH AND BLACKED OUT."
 	SoundEffects.play_breath_gasp(1.0)
 	if player and is_instance_valid(player) and player.has_method("start_death_sequence"):
 		player.start_death_sequence(self, "cloak_suffocate", 1.85, func():
@@ -473,14 +570,11 @@ func _trigger_strangle_kill() -> void:
 	is_hostile = true
 	kill_mode = "strangle"
 	kill_anim_timer = 0.0
-	for e in eye_nodes:
-		if is_instance_valid(e):
-			e.visible = true
 	for c_node in strangle_coils:
 		if is_instance_valid(c_node):
 			c_node.visible = true
 	velocity = Vector3.ZERO
-	var reason := "STRANGLED TO DEATH — THE CLOAK WRAPPED AROUND YOUR BODY AND CRUSHED YOUR THROAT."
+	var reason := "STRANGLED TO DEATH — THE GHOST'S COILING SILK WRAPPED AROUND YOUR BODY AND CRUSHED YOUR THROAT."
 	SoundEffects.play_cloth_wrap()
 	SoundEffects.play_breath_gasp(0.95)
 	var hud_node = get_tree().root.find_child("HUD", true, false)
@@ -496,31 +590,13 @@ func _trigger_strangle_kill() -> void:
 func _animate_cloth(_delta: float) -> void:
 	if not mesh_root:
 		return
-	var wave_spd: float = 6.5 if is_hostile else 2.8
-	mesh_root.position.y = 0.14 + sin(anim_time * wave_spd) * 0.09
-	mesh_root.rotation.z = sin(anim_time * (wave_spd * 0.6)) * 0.05
+	var wave_spd: float = 6.2 if is_hostile else 2.6
+	mesh_root.position.y = 0.08 + sin(anim_time * wave_spd) * 0.05
+	mesh_root.rotation.z = sin(anim_time * (wave_spd * 0.55)) * 0.03
 
 	var wrap_tightness: float = 0.0
 	if is_killing and kill_mode == "strangle":
 		wrap_tightness = clampf(kill_anim_timer / 1.10, 0.0, 1.0)
-
-	for i in range(shroud_panels.size()):
-		var p = shroud_panels[i]
-		var base_ang: float = float(p.get_meta("base_ang", float(i) * (TAU / 16.0)))
-		var rad: float = lerpf(0.72, 0.25, wrap_tightness)
-		var spin: float = wrap_tightness * 2.4
-		p.position.x = cos(base_ang + spin) * rad
-		p.position.z = sin(base_ang + spin) * rad
-		p.rotation.y = -(base_ang + spin) + PI * 0.5
-		p.rotation.x = 0.08 + sin(anim_time * wave_spd + float(i) * 0.65) * (0.24 if is_hostile else 0.13)
-		p.rotation.z = cos(anim_time * (wave_spd * 0.8) + float(i) * 0.8) * 0.08
-
-	for i in range(ribbon_strips.size()):
-		var r = ribbon_strips[i]
-		r.rotation.x = 0.16 + sin(anim_time * (wave_spd * 1.35) + float(i) * 1.1) * (0.36 if is_hostile else 0.20)
-		r.rotation.z = cos(anim_time * (wave_spd * 1.1) + float(i) * 0.8) * 0.16
-
-	if is_killing and kill_mode == "strangle":
 		for c_idx in range(strangle_coils.size()):
 			var coil = strangle_coils[c_idx]
 			if is_instance_valid(coil):

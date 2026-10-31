@@ -1,0 +1,15 @@
+{
+  "name": "escape-game-relay-server",
+  "version": "1.0.0",
+  "description": "Cross-network Cloud WebSocket Relay Server for The Company Does Not Let You Leave",
+  "main": "relay_server.js",
+  "scripts": {
+    "start": "node relay_server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["game-server", "websocket", "relay", "godot4"],
+  "author": "DeepMind Agent",
+  "license": "MIT"
+}

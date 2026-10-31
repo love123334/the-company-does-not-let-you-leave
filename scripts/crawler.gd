@@ -1,7 +1,9 @@
 extends CharacterBody3D
 
+const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
+
 @export var move_speed: float = 3.1
-@export var kill_distance: float = 1.45
+@export var kill_distance: float = 2.15
 @export var is_active: bool = false
 var active: bool = false
 var is_dead: bool = false
@@ -27,6 +29,11 @@ var wall_side: float = 1.0
 var roam_dir: Vector3 = Vector3.FORWARD
 var roam_timer: float = 0.0
 var sound_timer: float = 2.0
+var is_snared_by_hanger: bool = false
+var hanger_snare_timer: float = 0.0
+var locker_banging_target: Node3D = null
+var locker_knock_count: int = 0
+var locker_knock_timer: float = 0.0
 
 # Bait tracking
 var bait_pos: Vector3 = Vector3.ZERO
@@ -49,8 +56,8 @@ func _ready() -> void:
 	add_to_group("hunt_entities")
 	if player == null:
 		player = get_tree().get_first_node_in_group("player")
-	collision_layer = 0
-	collision_mask = 1
+	collision_layer = 4
+	collision_mask = 1 | 8
 	_build_crawler_mesh()
 	_anim_t = randf() * 10.0
 	sound_timer = randf_range(3.0, 8.0)
@@ -106,6 +113,59 @@ func hit_by_mop() -> bool:
 	tw.tween_interval(0.9)
 	tw.tween_callback(queue_free)
 	return true
+
+func stun(duration: float) -> void:
+	if is_dead or latched:
+		return
+
+	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+		velocity = Vector3.ZERO
+		return
+	stun_timer = max(stun_timer, duration)
+	velocity = Vector3.ZERO
+	_spawn_electric_sparks(duration)
+	SoundEffects.play(SoundEffects.snd_screech, -2.0, 1.6)
+
+func _spawn_electric_sparks(duration: float) -> void:
+	var spark_node = Node3D.new()
+	spark_node.name = "StunSparks"
+	spark_node.position = Vector3(0, 0.35, 0)
+	add_child(spark_node)
+
+	var light = OmniLight3D.new()
+	light.light_color = Color(0.3, 0.85, 1.0)
+	light.light_energy = 1.8
+	light.omni_range = 2.5
+	spark_node.add_child(light)
+
+	var spark_mat = StandardMaterial3D.new()
+	spark_mat.albedo_color = Color(0.4, 0.9, 1.0)
+	spark_mat.emission_enabled = true
+	spark_mat.emission = Color(0.5, 0.95, 1.0)
+	spark_mat.emission_energy_multiplier = 3.0
+
+	var sparks: Array[MeshInstance3D] = []
+	for i in range(6):
+		var sp = MeshInstance3D.new()
+		var cyl = CylinderMesh.new()
+		cyl.top_radius = 0.006
+		cyl.bottom_radius = 0.006
+		cyl.height = 0.14
+		sp.mesh = cyl
+		sp.material_override = spark_mat
+		spark_node.add_child(sp)
+		sparks.append(sp)
+
+	var tw = create_tween()
+	tw.tween_method(func(t: float):
+		if not is_instance_valid(spark_node): return
+		light.light_energy = randf_range(1.0, 2.0)
+		for sp in sparks:
+			if is_instance_valid(sp):
+				sp.position = Vector3(randf_range(-0.3, 0.3), randf_range(-0.2, 0.3), randf_range(-0.3, 0.3))
+				sp.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	, 0.0, duration, duration)
+	tw.tween_callback(spark_node.queue_free)
 
 func start_execution_by_hunter(hunter_node: Node3D) -> void:
 	if is_dead or is_being_executed:
@@ -189,6 +249,10 @@ func _physics_process(delta: float) -> void:
 	if is_dead or latched:
 		return
 
+	if player and (bool(player.get("is_dead")) or bool(player.get("in_death_sequence"))):
+		velocity = Vector3.ZERO
+		return
+
 	if attack_cooldown > 0.0:
 		attack_cooldown -= delta
 
@@ -222,6 +286,13 @@ func _physics_process(delta: float) -> void:
 	if hunter == null or not is_instance_valid(hunter):
 		hunter = get_tree().get_first_node_in_group("hunter")
 
+	if is_snared_by_hanger:
+		hanger_snare_timer -= delta
+		velocity = Vector3.ZERO
+		if hanger_snare_timer <= 0.0:
+			release_from_hanger()
+		return
+
 	# Check if caught and executed by the Hunter
 	if hunter and is_instance_valid(hunter) and hunter.get("active"):
 		var dist_to_hunter = Vector2(global_position.x - hunter.global_position.x, global_position.z - hunter.global_position.z).length()
@@ -230,9 +301,18 @@ func _physics_process(delta: float) -> void:
 				if hunter.start_prey_execution(self, "crawler"):
 					return
 
-	var player_hiding: bool = (player.get("is_hiding") == true) or (player.get("is_inside_cloak") == true)
+	var player_in_locker: bool = (player.get("is_hiding") == true)
+	var player_hiding: bool = player_in_locker or (player.get("is_inside_cloak") == true)
 	var p_floor: int = player.get("current_floor") if "current_floor" in player else 1
 	var dist_to_player = Vector2(global_position.x - player.global_position.x, global_position.z - player.global_position.z).length()
+
+	if player_in_locker and locker_banging_target == null and locker_knock_count == 0:
+		var l_dist = global_position.distance_to(player.global_position)
+		if l_dist < 12.0:
+			locker_banging_target = player.get("current_locker")
+			locker_knock_count = 3
+			locker_knock_timer = 0.0
+
 	var afraid_of_hunter: bool = false
 	if hunter and is_instance_valid(hunter) and hunter.get("active"):
 		var dh_fear = Vector2(global_position.x - hunter.global_position.x, global_position.z - hunter.global_position.z).length()
@@ -240,7 +320,21 @@ func _physics_process(delta: float) -> void:
 			afraid_of_hunter = true
 
 	# Attack Player if already within strike distance (unless fleeing in terror from Hunter!)
-	if not afraid_of_hunter and not player_hiding and not bool(player.get("in_bite_sequence")) and not bool(player.get("in_death_sequence")) and p_floor == 1 and dist_to_player <= kill_distance and attack_cooldown <= 0.0:
+	if not afraid_of_hunter and not player_hiding and not bool(player.get("in_bite_sequence")) and not bool(player.get("in_death_sequence")) and not bool(player.get("is_dead")) and p_floor == 1 and dist_to_player <= kill_distance and attack_cooldown <= 0.0:
+		if player.has_method("is_baton_defending") and player.is_baton_defending():
+			if player.is_baton_parrying():
+				stun(3.0)
+				attack_cooldown = 3.5
+				player.on_successful_parry(self)
+				var hud_node = get_tree().root.find_child("HUD", true, false)
+				if hud_node and hud_node.has_method("show_toast"):
+					hud_node.show_toast("⚡ PERFECT PARRY! CRAWLER DEFLECTED & STUNNED (3.0s)!", Color(0.2, 1.0, 0.5))
+				return
+			elif player.is_baton_blocking():
+				player.on_successful_block(self)
+				attack_cooldown = 2.0
+				return
+
 		attack_cooldown = 2.5
 		surf = "floor"
 		if _mesh_root:
@@ -261,6 +355,10 @@ func _physics_process(delta: float) -> void:
 	# =========================================================================
 	var target_pos: Vector3 = player.global_position
 	var mode: String = "player"
+
+	# Crawlers strictly stay on Floor 1 (no crawlers on Floor 2!)
+	if p_floor > 1 or player.global_position.y > 2.0:
+		mode = "roam"
 
 	# 1. Flee from Hunter if within 13m
 	if hunter and is_instance_valid(hunter) and hunter.get("active"):
@@ -295,28 +393,57 @@ func _physics_process(delta: float) -> void:
 	is_afraid = (mode == "flee")
 
 	var move_dir: Vector3 = Vector3.ZERO
-	if mode == "roam":
+
+	# 0. Locker investigation: scuttle to locker, scratch 3 times, then roam away
+	if is_instance_valid(locker_banging_target) and locker_knock_count > 0:
+		var fwd_l = locker_banging_target.global_transform.basis.z
+		var front_pos = locker_banging_target.global_position + fwd_l * 1.05
+		front_pos.y = global_position.y
+		var to_front = front_pos - global_position
+		to_front.y = 0.0
+		if to_front.length() > 0.35:
+			move_dir = to_front.normalized()
+		else:
+			move_dir = Vector3.ZERO
+			locker_knock_timer += delta
+			if locker_knock_timer >= 0.55:
+				locker_knock_timer = 0.0
+				locker_knock_count -= 1
+				SoundEffects.play(SoundEffects.snd_click, 3.2, 0.48)
+				if locker_knock_count <= 0:
+					locker_banging_target = null
+					mode = "roam"
+	elif mode == "roam":
 		roam_timer -= delta
 		if roam_timer <= 0.0 or is_on_wall():
 			roam_timer = randf_range(2.0, 4.5)
 			var ang = randf() * TAU
 			roam_dir = Vector3(cos(ang), 0.0, sin(ang))
 		move_dir = roam_dir
-	elif mode == "player" and hunter and is_instance_valid(hunter) and hunter.has_method("_get_player_bfs_field"):
-		# Follow BFS shortest path around maze corners toward player!
-		var d: PackedInt32Array = hunter._get_player_bfs_field(true)
-		var S: int = int(hunter.get("_bfs_grid_size"))
-		var nb: Array = hunter._bfs_next_cell(global_position, d, S)
-		if not nb.is_empty():
-			var wx = float(nb[1]) * GameData.UNIT
-			var wz = float(nb[0]) * GameData.UNIT
-			var to_wp = Vector3(wx - global_position.x, 0.0, wz - global_position.z)
-			if to_wp.length() > 0.05:
-				move_dir = to_wp.normalized()
-		if move_dir == Vector3.ZERO:
-			var to_p = Vector3(target_pos.x - global_position.x, 0.0, target_pos.z - global_position.z)
+	elif mode == "player":
+		# If close to player (< 4.2m), charge directly at player without stopping at cell centers!
+		if dist_to_player <= 4.2:
+			var to_p = Vector3(player.global_position.x - global_position.x, 0.0, player.global_position.z - global_position.z)
 			if to_p.length() > 0.05:
 				move_dir = to_p.normalized()
+		elif hunter and is_instance_valid(hunter) and hunter.has_method("_get_player_bfs_field"):
+			# Follow BFS shortest path around maze corners toward player!
+			var d: PackedInt32Array = hunter._get_player_bfs_field(true)
+			var S: int = int(hunter.get("_bfs_grid_size"))
+			var nb: Array = hunter._bfs_next_cell(global_position, d, S)
+			if not nb.is_empty():
+				var wx = float(nb[1]) * GameData.UNIT
+				var wz = float(nb[0]) * GameData.UNIT
+				var to_wp = Vector3(wx - global_position.x, 0.0, wz - global_position.z)
+				if to_wp.length() > 0.05:
+					move_dir = to_wp.normalized()
+			else:
+				# Gate blocks BFS path: do not charge into closed gate
+				move_dir = Vector3.ZERO
+			if move_dir == Vector3.ZERO:
+				var to_p = Vector3(target_pos.x - global_position.x, 0.0, target_pos.z - global_position.z)
+				if to_p.length() > 0.05 and not nb.is_empty():
+					move_dir = to_p.normalized()
 	else:
 		var to_target = Vector3(target_pos.x - global_position.x, 0.0, target_pos.z - global_position.z)
 		if to_target.length() > 0.05:
@@ -380,32 +507,16 @@ func _build_crawler_mesh() -> void:
 	_mesh_root.name = "CrawlerMeshRoot"
 	add_child(_mesh_root)
 
-	var sk_mat = StandardMaterial3D.new()
-	sk_mat.albedo_color = Color(0.24, 0.28, 0.29)
-	sk_mat.roughness = 0.52
-	sk_mat.emission_enabled = true
-	sk_mat.emission = Color(0.02, 0.04, 0.05)
-
-	var meat_mat = StandardMaterial3D.new()
-	meat_mat.albedo_color = Color(0.45, 0.05, 0.08)
-	meat_mat.roughness = 0.14
-	meat_mat.metallic = 0.12
-	meat_mat.emission_enabled = true
-	meat_mat.emission = Color(0.18, 0.01, 0.02)
-
-	var dark_mat = StandardMaterial3D.new()
-	dark_mat.albedo_color = Color(0.02, 0.005, 0.01)
-	dark_mat.roughness = 0.95
+	var sk_mat = VisualMaterialFactory.create_chitin_material(Color(0.18, 0.22, 0.24), 0.35, 0.22)
+	var meat_mat = VisualMaterialFactory.create_flesh_material(Color(0.48, 0.05, 0.08), true)
+	var dark_mat = VisualMaterialFactory.create_chitin_material(Color(0.04, 0.02, 0.03), 0.45, 0.15)
+	var bone_mat = VisualMaterialFactory.create_bone_material(Color(0.82, 0.78, 0.70))
 
 	var eye_mat = StandardMaterial3D.new()
 	eye_mat.albedo_color = Color(1.0, 0.72, 0.22)
 	eye_mat.emission_enabled = true
 	eye_mat.emission = Color(1.0, 0.45, 0.10)
 	eye_mat.emission_energy_multiplier = 3.2
-
-	var bone_mat = StandardMaterial3D.new()
-	bone_mat.albedo_color = Color(0.82, 0.78, 0.70)
-	bone_mat.roughness = 0.45
 
 	# Deformed Cephalothorax
 	var body_node = MeshInstance3D.new()
@@ -619,3 +730,13 @@ func _animate_crawler(t: float, delta: float) -> void:
 		_mesh_root.position.y = lerp(_mesh_root.position.y, target_y, min(1.0, delta * 6.0))
 		_mesh_root.position.x = lerp(_mesh_root.position.x, target_x, min(1.0, delta * 6.0))
 		_mesh_root.rotation.z = lerp_angle(_mesh_root.rotation.z, target_rot_z, min(1.0, delta * 6.0))
+
+func freeze_by_hanger(duration: float = 3.5) -> void:
+	is_snared_by_hanger = true
+	hanger_snare_timer = duration
+	velocity = Vector3.ZERO
+
+func release_from_hanger() -> void:
+	is_snared_by_hanger = false
+	hanger_snare_timer = 0.0
+	stun_timer = 2.5

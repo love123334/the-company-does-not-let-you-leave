@@ -133,12 +133,35 @@ var override_dir: float = 1.0
 var override_zone_min: float = 0.58
 var override_zone_max: float = 0.78
 
+# --- 2-SLOT WEAPON INVENTORY UI ---
+var weapon_inv_container: VBoxContainer = null
+var weapon_mop_label: Label = null
+var weapon_taser_label: Label = null
+var weapon_baton_label: Label = null
+var weapon_guard_label: Label = null
+
+# --- HANGER STRUGGLE QTE UI ---
+var hanger_struggle_panel: PanelContainer = null
+var hanger_struggle_bar: ProgressBar = null
+var hanger_struggle_timer_label: Label = null
+var hanger_struggle_prompt_label: Label = null
+
 signal start_game_clicked()
 signal pause_resumed()
 signal quit_to_menu()
+signal game_over_to_menu()
 signal retry_clicked()
 signal victory_finish_clicked()
 signal override_completed(success: bool)
+
+# Multiplayer signals
+signal mp_host_room_requested(room_name: String, day: int, map_idx: int, task_mult: float, supplies_mult: float)
+signal mp_join_room_requested(ip: String, port: int)
+signal mp_join_code_requested(code_or_address: String)
+signal mp_quick_join_requested()
+signal mp_start_shift_requested()
+signal mp_leave_room_requested()
+signal mp_toggle_ready_requested(ready: bool)
 
 signal dev_god_toggled(enabled: bool)
 signal dev_freeze_toggled(enabled: bool)
@@ -153,6 +176,7 @@ signal dev_jump_day(day_num: int)
 signal dev_spawn_crawler()
 signal dev_spawn_cultist()
 signal dev_spawn_cloak()
+signal dev_spawn_hanger()
 signal dev_repair_mop()
 signal dev_unlock_map()
 signal dev_panel_closed()
@@ -163,6 +187,53 @@ var quit_warning_modal: PanelContainer = null
 var quit_warning_title: Label = null
 var quit_warning_body: Label = null
 var pause_warning_label: Label = null
+
+# --- MULTIPLAYER CO-OP UI SYSTEM ---
+var btn_multiplayer: Button = null
+var mp_panel: PanelContainer = null
+var mp_callsign_input: LineEdit = null
+var mp_room_input: LineEdit = null
+var mp_day_select: OptionButton = null
+var mp_map_select: OptionButton = null
+var mp_task_select: OptionButton = null
+var mp_supply_select: OptionButton = null
+var mp_ip_input: LineEdit = null
+var mp_port_input: LineEdit = null
+var mp_code_input: LineEdit = null
+var mp_scan_status: Label = null
+var mp_btn_host_tab: Button = null
+var mp_btn_join_tab: Button = null
+var mp_host_box: VBoxContainer = null
+var mp_join_box: VBoxContainer = null
+
+var mp_lobby_panel: PanelContainer = null
+var mp_lobby_title: Label = null
+var mp_lobby_info: Label = null
+var mp_lobby_code_label: Label = null
+var mp_btn_copy_code: Button = null
+var mp_lobby_player_list: VBoxContainer = null
+var mp_btn_lobby_ready: Button = null
+var mp_btn_lobby_start: Button = null
+var mp_local_is_ready: bool = false
+
+var mp_browser_scroll: ScrollContainer = null
+var mp_browser_vbox: VBoxContainer = null
+var mp_browser_empty_label: Label = null
+
+var mp_scoreboard_panel: PanelContainer = null
+var mp_scoreboard_title: Label = null
+var mp_scoreboard_winner: Label = null
+var mp_scoreboard_table: VBoxContainer = null
+var mp_btn_scoreboard_next: Button = null
+var mp_btn_scoreboard_menu: Button = null
+
+var mp_chat_panel: PanelContainer = null
+var mp_chat_scroll: ScrollContainer = null
+var mp_chat_vbox: VBoxContainer = null
+var mp_chat_input: LineEdit = null
+var mp_btn_send_chat: Button = null
+var mp_spectator_banner: PanelContainer = null
+var mp_spectator_label: Label = null
 
 var current_slides: Array = []
 var slide_index: int = 0
@@ -201,6 +272,7 @@ func _ready() -> void:
 
 	_overhaul_main_menu()
 	_build_dynamic_hud_elements()
+	_build_multiplayer_ui()
 
 	# Main menu connections
 	btn_start.pressed.connect(func():
@@ -548,6 +620,120 @@ func _build_dynamic_hud_elements() -> void:
 	ov_vbox.add_child(override_canvas)
 	game_hud.add_child(override_panel)
 
+	# 5b. 2-Slot Weapon Inventory HUD Panel (Bottom Left)
+	var bottom_left = game_hud.get_node_or_null("BottomLeft")
+	if bottom_left:
+		weapon_inv_container = VBoxContainer.new()
+		weapon_inv_container.name = "WeaponInventory"
+		weapon_inv_container.add_theme_constant_override("separation", 2)
+
+		weapon_mop_label = Label.new()
+		weapon_mop_label.add_theme_font_override("font", font_mono)
+		weapon_mop_label.add_theme_font_size_override("font_size", 13)
+		weapon_mop_label.add_theme_constant_override("outline_size", 2)
+		weapon_mop_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		weapon_mop_label.text = "► [Q] MOP (EQUIPPED)"
+		weapon_mop_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.2))
+		weapon_inv_container.add_child(weapon_mop_label)
+
+		weapon_taser_label = Label.new()
+		weapon_taser_label.add_theme_font_override("font", font_mono)
+		weapon_taser_label.add_theme_font_size_override("font_size", 13)
+		weapon_taser_label.add_theme_constant_override("outline_size", 2)
+		weapon_taser_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		weapon_taser_label.text = "  [2] [EMPTY]"
+		weapon_taser_label.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
+		weapon_inv_container.add_child(weapon_taser_label)
+
+		weapon_baton_label = Label.new()
+		weapon_baton_label.add_theme_font_override("font", font_mono)
+		weapon_baton_label.add_theme_font_size_override("font_size", 13)
+		weapon_baton_label.add_theme_constant_override("outline_size", 2)
+		weapon_baton_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		weapon_baton_label.text = "  [3] [EMPTY]"
+		weapon_baton_label.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
+		weapon_inv_container.add_child(weapon_baton_label)
+
+		weapon_guard_label = Label.new()
+		weapon_guard_label.add_theme_font_override("font", font_mono)
+		weapon_guard_label.add_theme_font_size_override("font_size", 13)
+		weapon_guard_label.add_theme_constant_override("outline_size", 2)
+		weapon_guard_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		weapon_guard_label.visible = false
+		weapon_inv_container.add_child(weapon_guard_label)
+
+		bottom_left.add_child(weapon_inv_container)
+
+	# 5c. Hanger Struggle QTE Bar Widget
+	hanger_struggle_panel = PanelContainer.new()
+	hanger_struggle_panel.name = "HangerStrugglePanel"
+	hanger_struggle_panel.visible = false
+	hanger_struggle_panel.set_anchors_preset(Control.PRESET_CENTER)
+	hanger_struggle_panel.offset_left = -220.0
+	hanger_struggle_panel.offset_top = -140.0
+	hanger_struggle_panel.offset_right = 220.0
+	hanger_struggle_panel.offset_bottom = -20.0
+	hanger_struggle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var hg_sb = StyleBoxFlat.new()
+	hg_sb.bg_color = Color(0.12, 0.02, 0.04, 0.92)
+	hg_sb.border_width_left = 3
+	hg_sb.border_width_top = 3
+	hg_sb.border_width_right = 3
+	hg_sb.border_width_bottom = 3
+	hg_sb.border_color = Color(0.95, 0.15, 0.25, 0.95)
+	hg_sb.content_margin_left = 16
+	hg_sb.content_margin_right = 16
+	hg_sb.content_margin_top = 10
+	hg_sb.content_margin_bottom = 10
+	hanger_struggle_panel.add_theme_stylebox_override("panel", hg_sb)
+
+	var hg_vbox = VBoxContainer.new()
+	hg_vbox.add_theme_constant_override("separation", 6)
+	hanger_struggle_panel.add_child(hg_vbox)
+
+	var hg_title = Label.new()
+	hg_title.text = "⚠ CAUGHT BY CEILING HANGER! ⚠"
+	hg_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hg_title.add_theme_font_override("font", font_mono)
+	hg_title.add_theme_font_size_override("font_size", 14)
+	hg_title.add_theme_color_override("font_color", Color(1.0, 0.25, 0.3))
+	hg_vbox.add_child(hg_title)
+
+	hanger_struggle_prompt_label = Label.new()
+	hanger_struggle_prompt_label.text = "[SPAM SPACE TO STRUGGLE & BREAK FREE]"
+	hanger_struggle_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hanger_struggle_prompt_label.add_theme_font_override("font", font_mono)
+	hanger_struggle_prompt_label.add_theme_font_size_override("font_size", 12)
+	hanger_struggle_prompt_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.2))
+	hg_vbox.add_child(hanger_struggle_prompt_label)
+
+	hanger_struggle_bar = ProgressBar.new()
+	hanger_struggle_bar.custom_minimum_size = Vector2(360, 20)
+	hanger_struggle_bar.min_value = 0.0
+	hanger_struggle_bar.max_value = 100.0
+	hanger_struggle_bar.value = 0.0
+	hanger_struggle_bar.show_percentage = true
+
+	var hg_bg = StyleBoxFlat.new()
+	hg_bg.bg_color = Color(0.2, 0.05, 0.05, 0.8)
+	hanger_struggle_bar.add_theme_stylebox_override("background", hg_bg)
+
+	var hg_fill = StyleBoxFlat.new()
+	hg_fill.bg_color = Color(0.2, 0.95, 0.4, 0.95)
+	hanger_struggle_bar.add_theme_stylebox_override("fill", hg_fill)
+	hg_vbox.add_child(hanger_struggle_bar)
+
+	hanger_struggle_timer_label = Label.new()
+	hanger_struggle_timer_label.text = "STRANGULATION IMMINENT (5.0s)"
+	hanger_struggle_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hanger_struggle_timer_label.add_theme_font_override("font", font_mono)
+	hanger_struggle_timer_label.add_theme_font_size_override("font_size", 11)
+	hanger_struggle_timer_label.add_theme_color_override("font_color", Color(0.9, 0.8, 0.6))
+	hg_vbox.add_child(hanger_struggle_timer_label)
+
+	game_hud.add_child(hanger_struggle_panel)
+
 	# 6. Shift Start Gate Overlay (for Night 2..5 transitions)
 	shift_gate_panel = PanelContainer.new()
 	shift_gate_panel.visible = false
@@ -593,7 +779,7 @@ func _build_dynamic_hud_elements() -> void:
 		go_menu_btn.add_theme_font_override("font", font_mono)
 		go_menu_btn.pressed.connect(func():
 			game_over_screen.visible = false
-			quit_to_menu.emit()
+			game_over_to_menu.emit()
 		)
 		$GameOverScreen/VBox.add_child(go_menu_btn)
 
@@ -683,6 +869,14 @@ func _build_dynamic_hud_elements() -> void:
 		btn_clk.add_theme_font_size_override("font_size", 11)
 		btn_clk.pressed.connect(func(): dev_spawn_cloak.emit())
 		sp_row.add_child(btn_clk)
+
+		var btn_hgr = Button.new()
+		btn_hgr.text = "+Hanger"
+		btn_hgr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn_hgr.add_theme_font_override("font", font_mono)
+		btn_hgr.add_theme_font_size_override("font_size", 11)
+		btn_hgr.pressed.connect(func(): dev_spawn_hanger.emit())
+		sp_row.add_child(btn_hgr)
 		dv.add_child(sp_row)
 
 		var util_row = HBoxContainer.new()
@@ -891,10 +1085,11 @@ func _draw_cloak_overlay() -> void:
 	var t_sec: float = float(Time.get_ticks_msec()) * 0.001
 
 	if cloak_overlay_mode == "suffocate":
-		# 1. Draped dark cloth hood borders around screen edges so player feels inside the Cloak
+		# 1. Draped ethereal white silk shroud borders around screen edges so player feels inside her shroud
 		var fold_w: float = w * lerpf(0.08, 0.34, r)
 		var fold_h: float = h * lerpf(0.07, 0.30, r)
-		var cloth_col := Color(0.03, 0.02, 0.05, lerpf(0.65, 0.96, r))
+		# Starts as soft translucent pearlescent silk, gradually darkening as oxygen depletes
+		var cloth_col := Color(lerpf(0.88, 0.04, r), lerpf(0.88, 0.02, r), lerpf(0.95, 0.06, r), lerpf(0.52, 0.96, r))
 		cloak_overlay.draw_rect(Rect2(0, 0, fold_w, h), cloth_col)
 		cloak_overlay.draw_rect(Rect2(w - fold_w, 0, fold_w, h), cloth_col)
 		cloak_overlay.draw_rect(Rect2(0, 0, w, fold_h), cloth_col)
@@ -907,7 +1102,7 @@ func _draw_cloak_overlay() -> void:
 			var inset_y: float = fold_h + fi * (h * 0.032)
 			var band_a: float = clampf((r - 0.12) * 0.95 / fi, 0.0, 0.72)
 			if band_a > 0.01 and w - inset_x * 2.0 > 10.0 and h - inset_y * 2.0 > 10.0:
-				var b_col := Color(0.05, 0.03, 0.08, band_a)
+				var b_col := Color(lerpf(0.82, 0.05, r), lerpf(0.80, 0.03, r), lerpf(0.90, 0.08, r), band_a)
 				cloak_overlay.draw_rect(Rect2(inset_x - 28.0, inset_y - 22.0, 28.0, h - (inset_y - 22.0) * 2.0), b_col)
 				cloak_overlay.draw_rect(Rect2(w - inset_x, inset_y - 22.0, 28.0, h - (inset_y - 22.0) * 2.0), b_col)
 				cloak_overlay.draw_rect(Rect2(inset_x, inset_y - 22.0, w - inset_x * 2.0, 22.0), b_col)
@@ -939,13 +1134,13 @@ func _draw_cloak_overlay() -> void:
 		var choke_alpha: float = clampf((r - 0.25) * 1.15, 0.0, 0.96)
 		cloak_overlay.draw_rect(Rect2(0, 0, w, h), Color(0.08, 0.01, 0.02, choke_alpha))
 
-func show_toast(msg: String, col: Color = Color(0.95, 0.88, 0.35)) -> void:
+func show_toast(msg: String, col: Color = Color(0.95, 0.88, 0.35), dur: float = 3.2) -> void:
 	if not toast_label:
 		return
 	toast_label.text = msg
 	toast_label.modulate = col
 	toast_label.visible = true
-	toast_timer = 3.2
+	toast_timer = dur
 
 func flash_damage() -> void:
 	if not damage_flash_rect:
@@ -1086,11 +1281,11 @@ func set_phase_presentation(phase: String, day_num: int = 1) -> void:
 		dist_warning.text = "STATUS: COMPLETE QUOTA TO UNLOCK ESCAPE"
 		dist_warning.modulate = Color(0.3, 0.9, 0.4)
 	elif phase == "chase":
-		facility_title.text = "CONTAINMENT BREACH — RUN!"
-		facility_dot.color = Color(0.95, 0.1, 0.15)
+		facility_title.text = "%s [CONTAINMENT BREACH]" % night_title
+		facility_dot.color = Color(0.95, 0.15, 0.2)
 		# Raw step counter box is ONLY shown in Dev Mode (matching HTML lines 4279-4280 & 4472-4475)
 		chase_hud_box.visible = dev_mode_enabled
-		dist_warning.text = "⚠ ENTITY UNLEASHED — DO NOT STOP MOVING!"
+		dist_warning.text = "STATUS: CONTAINMENT BREACH — SURVIVE & RUN!"
 		dist_warning.modulate = Color(1.0, 0.25, 0.25)
 
 func update_work_objectives(
@@ -1103,28 +1298,57 @@ func update_work_objectives(
 	blood_cleaned: int = 0,
 	keycards: int = 0,
 	max_keycards: int = 3,
-	bites: int = 0,
-	bait_left: int = 3
+	_bites: int = 0,
+	bait_left: int = 3,
+	f2_info: Dictionary = {}
 ) -> void:
 	_cached_keycards = keycards
 	_cached_max_keycards = max_keycards
 	var lines: Array[String] = []
 	if current_hud_phase == "work":
-		lines.append("• Mop spills: %d / %d" % [spills, max_spills])
-		lines.append("• Check terminals: %d / %d" % [terms, max_terms])
-		lines.append("• Clean blood stains: %d / 3 (+$15 each)" % blood_cleaned)
-		lines.append("• Wages: $%d  |  Bait [B]: %d" % [wages, bait_left])
+		if f2_info.is_empty():
+			lines.append("• Mop spills: %d / %d" % [spills, max_spills])
+			lines.append("• Check terminals: %d / %d" % [terms, max_terms])
+			lines.append("• Clean blood stains: %d / 3 (+$15 each)" % blood_cleaned)
+			lines.append("• Wages: $%d  |  Bait [B]: %d" % [wages, bait_left])
+		else:
+			lines.append("• 1F Mop spills: %d / %d" % [spills, max_spills])
+			lines.append("• 1F Check terminals: %d / %d" % [terms, max_terms])
+			lines.append("• 1F Clean blood: %d / 2 (+$15 each)" % blood_cleaned)
+			lines.append("• 2F Shutdown rogue PCs: %d / %d [SEC D]" % [f2_info.get("terms_done", 0), f2_info.get("terms_needed", 2)])
+			var usb_str = "ARCHIVED [SEC A-1]" if f2_info.get("usb_done", false) else ("DELIVER -> [SEC A-1 VAULT]" if f2_info.get("has_usb", false) else "TAKE [SEC A-2]")
+			lines.append("• 2F Research USB: %s" % usb_str)
+			var dos_str = "FILED [SEC B-1]" if f2_info.get("dossier_done", false) else ("FILE -> [SEC B-1 ARCHIVE]" if f2_info.get("has_dossier", false) else "TAKE [SEC B-2]")
+			lines.append("• 2F Classified Dossier: %s" % dos_str)
+			var cool_str = "COOLED [SEC C-1]" if f2_info.get("coolant_done", false) else ("INJECT -> [SEC C-1 SERVER]" if f2_info.get("has_coolant", false) else "TAKE [SEC C-2]")
+			lines.append("• 2F Server Coolant: %s" % cool_str)
+			lines.append("• Wages: $%d  |  Bait [B]: %d" % [wages, bait_left])
+		if relics > 0:
+			lines.append("• Relics: %d / 15" % relics)
 	else:
-		lines.append("• Grab Keycards: %d / %d" % [keycards, max_keycards])
-		lines.append("• Wages: $%d  |  Bait [B]: %d" % [wages, bait_left])
-		if bites > 0:
-			lines.append("• Bites: %d / %d — %d = death" % [bites, GameData.CRAWLER_BITE_MAX, GameData.CRAWLER_BITE_MAX])
-		# Only reveal raw step deadline / Final Mode window when Dev Mode (F9) is active!
+		# CHASE PHASE: Exactly 2 objectives as requested
+		# 1: collect key card
+		# 2: RUN!
+		var task1 = "• 1: collect key card (%d / %d)" % [keycards, max_keycards]
+		if keycards >= max_keycards:
+			task1 = "• 1: collect key card: SECURED (%d / %d) ✓" % [keycards, max_keycards]
+		lines.append(task1)
+
+		var task2 = "• 2: RUN!"
+		if keycards >= max_keycards:
+			task2 = "• 2: RUN TO THE EXIT GATE!"
+		lines.append(task2)
+
+		if keycards < max_keycards:
+			dist_warning.text = "STATUS: COLLECT %d KEYCARD%s TO UNLOCK EXIT!" % [(max_keycards - keycards), ("S" if (max_keycards - keycards) > 1 else "")]
+			dist_warning.modulate = Color(1.0, 0.45, 0.2)
+		else:
+			dist_warning.text = "STATUS: EXIT GATE UNLOCKED — EVACUATE NOW!"
+			dist_warning.modulate = Color(0.25, 1.0, 0.45)
+
 		if dev_mode_enabled:
 			var final_tag = " (FINAL INVINCIBLE!)" if _cached_dist <= GameData.FINAL_TRIGGER_STEPS else " (Final at <=%d)" % GameData.FINAL_TRIGGER_STEPS
-			lines.append("• [DEV] Deadline: %d steps%s · ~%d steps away" % [_cached_dist, final_tag, _cached_hunter_steps])
-	if relics > 0:
-		lines.append("• Relics: %d / 15" % relics)
+			lines.append("• [DEV] Steps: %d%s · Entity: ~%d away" % [_cached_dist, final_tag, _cached_hunter_steps])
 	objective_list.text = "\n".join(lines)
 
 func update_chase_distance(dist: int, max_dist: int = 210, hunter_steps_away: int = 40, keycards: int = 0, max_keycards: int = 3) -> void:
@@ -1156,6 +1380,49 @@ func update_mop_integrity(val: float, max_val: float = 100.0) -> void:
 	if mop_bar:
 		mop_bar.value = clampf((val / max_val) * 100.0, 0.0, 100.0)
 
+func update_weapon_inventory(active_w: int, has_taser: bool, taser_ammo: int, has_baton: bool, baton_durability: float, is_guarding: bool, is_parrying: bool) -> void:
+	if not weapon_inv_container or not is_instance_valid(weapon_mop_label):
+		return
+
+	# Slot MOP
+	if active_w == 0:
+		weapon_mop_label.text = "► [Q] MOP (EQUIPPED)"
+		weapon_mop_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.2))
+	else:
+		weapon_mop_label.text = "  [Q] MOP"
+		weapon_mop_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+
+	# Slot 1: TASER
+	if has_taser:
+		var txt = "► [2] STUN GUN (%d SHOT)" % taser_ammo if active_w == 1 else "  [2] STUN GUN (%d SHOT)" % taser_ammo
+		weapon_taser_label.text = txt
+		weapon_taser_label.add_theme_color_override("font_color", Color(0.3, 0.9, 1.0) if active_w == 1 else Color(0.3, 0.7, 0.8))
+	else:
+		weapon_taser_label.text = "  [2] [EMPTY]"
+		weapon_taser_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
+
+	# Slot 2: BATON
+	if has_baton:
+		var d_pct = int(round(baton_durability))
+		var txt = "► [3] SHOCK BATON (%d%%)" % d_pct if active_w == 2 else "  [3] SHOCK BATON (%d%%)" % d_pct
+		weapon_baton_label.text = txt
+		weapon_baton_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.4) if active_w == 2 else Color(0.4, 0.8, 0.4))
+	else:
+		weapon_baton_label.text = "  [3] [EMPTY]"
+		weapon_baton_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
+
+	# Guard / Parry status indicator
+	if is_guarding and active_w == 2:
+		weapon_guard_label.visible = true
+		if is_parrying:
+			weapon_guard_label.text = "⚡ PARRY WINDOW ACTIVE (0.25s)!"
+			weapon_guard_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.2))
+		else:
+			weapon_guard_label.text = "🛡 BLOCKING DEFENSE (RMB)"
+			weapon_guard_label.add_theme_color_override("font_color", Color(0.3, 0.85, 1.0))
+	else:
+		weapon_guard_label.visible = false
+
 func set_interaction_prompt(prompt: String) -> void:
 	if prompt != "":
 		interaction_label.visible = true
@@ -1164,6 +1431,22 @@ func set_interaction_prompt(prompt: String) -> void:
 	else:
 		interaction_label.visible = false
 		reticle.modulate = Color(1.0, 1.0, 1.0, 0.7)
+
+func show_hanger_struggle(time_left: float, current_count: int, required_count: int) -> void:
+	if hanger_struggle_panel:
+		hanger_struggle_panel.visible = true
+		var pct = (float(current_count) / float(max(1, required_count))) * 100.0
+		if hanger_struggle_bar:
+			hanger_struggle_bar.value = pct
+		if hanger_struggle_timer_label:
+			hanger_struggle_timer_label.text = "STRANGULATION IN: %.1fs  |  PROGRESS: %d / %d" % [time_left, current_count, required_count]
+		var flash = (int(Time.get_ticks_msec() / 200) % 2) == 0
+		if hanger_struggle_prompt_label:
+			hanger_struggle_prompt_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.2) if flash else Color(1.0, 0.35, 0.35))
+
+func hide_hanger_struggle() -> void:
+	if hanger_struggle_panel:
+		hanger_struggle_panel.visible = false
 
 func show_note_popup(title: String, tag: String, body_content) -> void:
 	note_title.text = title
@@ -1710,3 +1993,1099 @@ func _draw_slide_scene_content(w: float, h: float, t: float, ofs: Vector2, alpha
 			var emp_str = "EMP #%d   $%s   OVERDUE" % [8 + i * 31, "%.2f" % (4.5 * (i + 1))]
 			var row_a = (0.65 if (int(t * 6.0) % 12 != i) else 0.95) * alpha_mul
 			cutscene_canvas.draw_string(font_mono, Vector2(cx - 135, cy - 110 + i * 20), emp_str, HORIZONTAL_ALIGNMENT_LEFT, 280, 14, Color(0.94, 0.27, 0.27, row_a))
+
+# ==============================================================================
+# --- MULTIPLAYER CO-OP UI IMPLEMENTATION (UP TO 5 PLAYERS) ---
+# ==============================================================================
+func _build_multiplayer_ui() -> void:
+	# 1. Multiplayer Button on Main Menu
+	var button_box = $MainMenu/CenterBox/ButtonBox
+	if button_box:
+		btn_multiplayer = Button.new()
+		btn_multiplayer.name = "BtnMultiplayer"
+		btn_multiplayer.text = "CO-OP MULTIPLAYER (1-5 P)"
+		btn_multiplayer.add_theme_font_override("font", font_mono)
+		_style_menu_button(btn_multiplayer, Color(0.18, 0.88, 0.72), Color(0.04, 0.18, 0.15))
+		button_box.add_child(btn_multiplayer)
+		button_box.move_child(btn_multiplayer, 1)
+
+		btn_multiplayer.pressed.connect(func():
+			main_menu.visible = false
+			show_multiplayer_menu()
+		)
+
+	# 2. Main Multiplayer Menu Panel (Host / Join Room)
+	mp_panel = PanelContainer.new()
+	mp_panel.name = "MultiplayerMenuPanel"
+	mp_panel.visible = false
+	mp_panel.set_anchors_preset(Control.PRESET_CENTER)
+	mp_panel.custom_minimum_size = Vector2(580, 480)
+	mp_panel.offset_left = -290.0
+	mp_panel.offset_right = 290.0
+	mp_panel.offset_top = -240.0
+	mp_panel.offset_bottom = 240.0
+
+	var panel_sb = StyleBoxFlat.new()
+	panel_sb.bg_color = Color(0.02, 0.04, 0.08, 0.96)
+	panel_sb.border_width_left = 2
+	panel_sb.border_width_top = 2
+	panel_sb.border_width_right = 2
+	panel_sb.border_width_bottom = 2
+	panel_sb.border_color = Color(0.18, 0.85, 0.75, 0.9)
+	panel_sb.content_margin_left = 20
+	panel_sb.content_margin_right = 20
+	panel_sb.content_margin_top = 18
+	panel_sb.content_margin_bottom = 18
+	panel_sb.corner_radius_top_left = 6
+	panel_sb.corner_radius_top_right = 6
+	panel_sb.corner_radius_bottom_left = 6
+	panel_sb.corner_radius_bottom_right = 6
+	mp_panel.add_theme_stylebox_override("panel", panel_sb)
+	add_child(mp_panel)
+
+	var mp_vbox = VBoxContainer.new()
+	mp_vbox.add_theme_constant_override("separation", 12)
+	mp_panel.add_child(mp_vbox)
+
+	var mp_title = Label.new()
+	mp_title.text = "AETHELGARD BIOTECH — JANITOR CO-OP"
+	mp_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_title.add_theme_font_override("font", font_mono)
+	mp_title.add_theme_font_size_override("font_size", 20)
+	mp_title.add_theme_color_override("font_color", Color(0.2, 0.9, 0.8))
+	mp_vbox.add_child(mp_title)
+
+	var mp_sub = Label.new()
+	mp_sub.text = "Coordinate shifts, adjust supply quotas, and survive together across 28 sector maps."
+	mp_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mp_sub.add_theme_font_override("font", font_mono)
+	mp_sub.add_theme_font_size_override("font_size", 12)
+	mp_sub.add_theme_color_override("font_color", Color(0.55, 0.65, 0.72))
+	mp_vbox.add_child(mp_sub)
+
+	# Callsign Input Row
+	var callsign_row = HBoxContainer.new()
+	var cs_lbl = Label.new()
+	cs_lbl.text = "CALLSIGN:"
+	cs_lbl.custom_minimum_size = Vector2(130, 0)
+	cs_lbl.add_theme_font_override("font", font_mono)
+	cs_lbl.add_theme_font_size_override("font_size", 13)
+	cs_lbl.add_theme_color_override("font_color", Color(0.85, 0.9, 0.95))
+	callsign_row.add_child(cs_lbl)
+
+	mp_callsign_input = LineEdit.new()
+	mp_callsign_input.text = "Janitor #%d" % (randi() % 900 + 100)
+	mp_callsign_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_callsign_input.add_theme_font_override("font", font_mono)
+	callsign_row.add_child(mp_callsign_input)
+	mp_vbox.add_child(callsign_row)
+
+	# Tab Selection: Host Room vs Join Room
+	var tab_row = HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 10)
+	mp_btn_host_tab = Button.new()
+	mp_btn_host_tab.text = "★ HOST ROOM (CREATE)"
+	mp_btn_host_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_host_tab.add_theme_font_override("font", font_mono)
+
+	mp_btn_join_tab = Button.new()
+	mp_btn_join_tab.text = "CONNECT / JOIN"
+	mp_btn_join_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_join_tab.add_theme_font_override("font", font_mono)
+
+	tab_row.add_child(mp_btn_host_tab)
+	tab_row.add_child(mp_btn_join_tab)
+	mp_vbox.add_child(tab_row)
+
+	# --- HOST ROOM CONTAINER ---
+	mp_host_box = VBoxContainer.new()
+	mp_host_box.add_theme_constant_override("separation", 8)
+	mp_vbox.add_child(mp_host_box)
+
+	var room_row = HBoxContainer.new()
+	var rr_lbl = Label.new()
+	rr_lbl.text = "ROOM NAME:"
+	rr_lbl.custom_minimum_size = Vector2(130, 0)
+	rr_lbl.add_theme_font_override("font", font_mono)
+	rr_lbl.add_theme_font_size_override("font_size", 12)
+	room_row.add_child(rr_lbl)
+	mp_room_input = LineEdit.new()
+	mp_room_input.text = "Shift-Sector-4"
+	mp_room_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_room_input.add_theme_font_override("font", font_mono)
+	room_row.add_child(mp_room_input)
+	mp_host_box.add_child(room_row)
+
+	# Night Selection (Night 1 to 5)
+	var day_row = HBoxContainer.new()
+	var dr_lbl = Label.new()
+	dr_lbl.text = "SHIFT NIGHT:"
+	dr_lbl.custom_minimum_size = Vector2(130, 0)
+	dr_lbl.add_theme_font_override("font", font_mono)
+	dr_lbl.add_theme_font_size_override("font_size", 12)
+	day_row.add_child(dr_lbl)
+	mp_day_select = OptionButton.new()
+	mp_day_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_day_select.add_theme_font_override("font", font_mono)
+	mp_day_select.add_item("Night 1 (3 Map Pool)", 1)
+	mp_day_select.add_item("Night 2 (5 Map Pool)", 2)
+	mp_day_select.add_item("Night 3 (6 Map Pool)", 3)
+	mp_day_select.add_item("Night 4 (7 Map Pool)", 4)
+	mp_day_select.add_item("Night 5 (7 Map Pool)", 5)
+	day_row.add_child(mp_day_select)
+	mp_host_box.add_child(day_row)
+
+	# Sector Map Variant Selection (28 Maps)
+	var map_row = HBoxContainer.new()
+	var mr_lbl = Label.new()
+	mr_lbl.text = "SECTOR MAP:"
+	mr_lbl.custom_minimum_size = Vector2(130, 0)
+	mr_lbl.add_theme_font_override("font", font_mono)
+	mr_lbl.add_theme_font_size_override("font_size", 12)
+	map_row.add_child(mr_lbl)
+	mp_map_select = OptionButton.new()
+	mp_map_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_map_select.add_theme_font_override("font", font_mono)
+	map_row.add_child(mp_map_select)
+	mp_host_box.add_child(map_row)
+
+	mp_day_select.item_selected.connect(func(idx):
+		_update_mp_map_options_for_day(idx + 1)
+	)
+	_update_mp_map_options_for_day(1)
+
+	# Task Scaling Multiplier
+	var task_row = HBoxContainer.new()
+	var tr_lbl = Label.new()
+	tr_lbl.text = "TASK QUOTA:"
+	tr_lbl.custom_minimum_size = Vector2(130, 0)
+	tr_lbl.add_theme_font_override("font", font_mono)
+	tr_lbl.add_theme_font_size_override("font_size", 12)
+	task_row.add_child(tr_lbl)
+	mp_task_select = OptionButton.new()
+	mp_task_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_task_select.add_theme_font_override("font", font_mono)
+	mp_task_select.add_item("Standard Quota (1.0x)", 0)
+	mp_task_select.add_item("Co-op 2P Quota (1.5x)", 1)
+	mp_task_select.add_item("Co-op 3-4P Quota (2.0x)", 2)
+	mp_task_select.add_item("Full Squad 5P Quota (2.5x)", 3)
+	mp_task_select.select(1)
+	task_row.add_child(mp_task_select)
+	mp_host_box.add_child(task_row)
+
+	# Supplies Scaling Multiplier
+	var sup_row = HBoxContainer.new()
+	var sr_lbl = Label.new()
+	sr_lbl.text = "FACILITY GEAR:"
+	sr_lbl.custom_minimum_size = Vector2(130, 0)
+	sr_lbl.add_theme_font_override("font", font_mono)
+	sr_lbl.add_theme_font_size_override("font_size", 12)
+	sup_row.add_child(sr_lbl)
+	mp_supply_select = OptionButton.new()
+	mp_supply_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_supply_select.add_theme_font_override("font", font_mono)
+	mp_supply_select.add_item("Standard Supplies (1.0x)", 0)
+	mp_supply_select.add_item("Expanded Crates (1.5x)", 1)
+	mp_supply_select.add_item("Surplus Cache (2.0x)", 2)
+	mp_supply_select.select(1)
+	sup_row.add_child(mp_supply_select)
+	mp_host_box.add_child(sup_row)
+
+	var btn_create = Button.new()
+	btn_create.text = "CREATE ROOM & HOST LOBBY"
+	btn_create.custom_minimum_size = Vector2(0, 38)
+	btn_create.add_theme_font_override("font", font_mono)
+	btn_create.pressed.connect(_on_create_room_pressed)
+	mp_host_box.add_child(btn_create)
+
+	# --- JOIN ROOM CONTAINER (AUTO ROOM BROWSER & CODE) ---
+	mp_join_box = VBoxContainer.new()
+	mp_join_box.visible = false
+	mp_join_box.add_theme_constant_override("separation", 10)
+	mp_vbox.add_child(mp_join_box)
+
+	# 1. Real-time Live Room Browser
+	var browser_header = Label.new()
+	browser_header.text = "📡 CÁC PHÒNG ĐANG MỞ (BẤM ĐỂ VÀO NGAY / 1-CLICK JOIN):"
+	browser_header.add_theme_font_override("font", font_mono)
+	browser_header.add_theme_font_size_override("font_size", 12)
+	browser_header.add_theme_color_override("font_color", Color(0.2, 0.95, 0.75))
+	mp_join_box.add_child(browser_header)
+
+	mp_browser_scroll = ScrollContainer.new()
+	mp_browser_scroll.custom_minimum_size = Vector2(0, 160)
+	mp_browser_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mp_browser_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mp_join_box.add_child(mp_browser_scroll)
+
+	mp_browser_vbox = VBoxContainer.new()
+	mp_browser_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_browser_vbox.add_theme_constant_override("separation", 6)
+	mp_browser_scroll.add_child(mp_browser_vbox)
+
+	mp_browser_empty_label = Label.new()
+	mp_browser_empty_label.text = "⏳ Đang tự động dò tìm phòng trong mạng...\n(Khi bạn bè tạo phòng, phòng sẽ xuất hiện ngay tại đây)"
+	mp_browser_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_browser_empty_label.add_theme_font_override("font", font_mono)
+	mp_browser_empty_label.add_theme_font_size_override("font_size", 11)
+	mp_browser_empty_label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85))
+	mp_browser_vbox.add_child(mp_browser_empty_label)
+
+	# 2. Hoặc tham gia bằng Mã Phòng
+	var sep = HSeparator.new()
+	mp_join_box.add_child(sep)
+
+	var code_header = Label.new()
+	code_header.text = "HOẶC NHẬP MÃ PHÒNG (NẾU CÓ):"
+	code_header.add_theme_font_override("font", font_mono)
+	code_header.add_theme_font_size_override("font_size", 11)
+	code_header.add_theme_color_override("font_color", Color(0.7, 0.85, 0.9))
+	mp_join_box.add_child(code_header)
+
+	var code_row = HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 8)
+	mp_code_input = LineEdit.new()
+	mp_code_input.placeholder_text = "Nhập Mã Phòng (AGY-XXXXX-XXXXX)..."
+	mp_code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_code_input.custom_minimum_size = Vector2(0, 36)
+	mp_code_input.add_theme_font_override("font", font_mono)
+	code_row.add_child(mp_code_input)
+
+	var btn_paste = Button.new()
+	btn_paste.text = "📋 DÁN MÃ"
+	btn_paste.custom_minimum_size = Vector2(95, 36)
+	btn_paste.add_theme_font_override("font", font_mono)
+	btn_paste.pressed.connect(func():
+		var clip = DisplayServer.clipboard_get().strip_edges()
+		if clip != "":
+			mp_code_input.text = clip
+			show_toast("Đã dán mã từ clipboard!", Color(0.25, 0.95, 0.55))
+	)
+	code_row.add_child(btn_paste)
+
+	var btn_join_code = Button.new()
+	btn_join_code.text = "🚀 VÀO BẰNG MÃ"
+	btn_join_code.custom_minimum_size = Vector2(125, 36)
+	btn_join_code.add_theme_font_override("font", font_mono)
+	_style_menu_button(btn_join_code, Color(0.2, 0.95, 0.8), Color(0.04, 0.22, 0.18))
+	btn_join_code.pressed.connect(_on_join_code_pressed)
+	code_row.add_child(btn_join_code)
+	mp_join_box.add_child(code_row)
+
+	mp_scan_status = Label.new()
+	mp_scan_status.text = ""
+	mp_scan_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_scan_status.add_theme_font_override("font", font_mono)
+	mp_scan_status.add_theme_font_size_override("font_size", 11)
+	mp_scan_status.add_theme_color_override("font_color", Color(0.95, 0.75, 0.25))
+	mp_join_box.add_child(mp_scan_status)
+
+	# Tab Toggle Signals
+	mp_btn_host_tab.pressed.connect(func():
+		mp_host_box.visible = true
+		mp_join_box.visible = false
+		mp_btn_host_tab.modulate = Color(1.0, 1.0, 1.0)
+		mp_btn_join_tab.modulate = Color(0.65, 0.65, 0.65)
+	)
+	mp_btn_join_tab.pressed.connect(func():
+		mp_host_box.visible = false
+		mp_join_box.visible = true
+		mp_btn_join_tab.modulate = Color(1.0, 1.0, 1.0)
+		mp_btn_host_tab.modulate = Color(0.65, 0.65, 0.65)
+	)
+	mp_btn_join_tab.modulate = Color(0.65, 0.65, 0.65)
+
+	# Back Button
+	var btn_mp_back = Button.new()
+	btn_mp_back.text = "CANCEL / RETURN TO MENU"
+	btn_mp_back.custom_minimum_size = Vector2(0, 34)
+	btn_mp_back.add_theme_font_override("font", font_mono)
+	btn_mp_back.pressed.connect(func():
+		hide_multiplayer_menu()
+		main_menu.visible = true
+	)
+	mp_vbox.add_child(btn_mp_back)
+
+	# 3. Multiplayer Lobby Panel
+	_build_mp_lobby_panel()
+
+	# 4. Multiplayer Scoreboard / Evaluation Panel
+	_build_mp_scoreboard_panel()
+
+	# 5. In-Game Chat System Panel
+	_build_mp_chat_panel()
+
+	# 6. Spectator Mode HUD Banner
+	_build_mp_spectator_banner()
+
+func _update_mp_map_options_for_day(day_num: int) -> void:
+	if not mp_map_select:
+		return
+	mp_map_select.clear()
+	mp_map_select.add_item("Random Sector Variant (Recommended)", -1)
+	var count = GameData.get_map_count_for_day(day_num)
+	for i in range(count):
+		mp_map_select.add_item("Sector Map #%d" % (i + 1), i)
+	mp_map_select.select(0)
+
+func _on_create_room_pressed() -> void:
+	var r_name = mp_room_input.text.strip_edges()
+	if r_name == "":
+		r_name = "Shift-Room"
+	var day_num = mp_day_select.selected + 1
+	var map_idx = mp_map_select.get_selected_id()
+
+	var t_mults = [1.0, 1.5, 2.0, 2.5]
+	var s_mults = [1.0, 1.5, 2.0]
+	var task_mult = t_mults[clampi(mp_task_select.selected, 0, t_mults.size() - 1)]
+	var supply_mult = s_mults[clampi(mp_supply_select.selected, 0, s_mults.size() - 1)]
+
+	if mp_callsign_input.text.strip_edges() != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr:
+			net_mgr.local_player_name = mp_callsign_input.text.strip_edges()
+
+	mp_host_room_requested.emit(r_name, day_num, map_idx, task_mult, supply_mult)
+
+func _on_join_code_pressed() -> void:
+	var code_str = mp_code_input.text.strip_edges()
+	if code_str == "":
+		show_toast("Vui lòng nhập hoặc dán Mã Phòng!", Color(1.0, 0.4, 0.4))
+		return
+	if mp_callsign_input.text.strip_edges() != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr:
+			net_mgr.local_player_name = mp_callsign_input.text.strip_edges()
+	mp_scan_status.text = "Đang kết nối tới mã phòng %s..." % code_str
+	mp_join_code_requested.emit(code_str)
+
+func _on_join_room_clicked(ip: String, port: int) -> void:
+	if mp_callsign_input.text.strip_edges() != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr:
+			net_mgr.local_player_name = mp_callsign_input.text.strip_edges()
+	mp_scan_status.text = "Đang kết nối vào phòng..."
+	mp_join_room_requested.emit(ip, port)
+
+func update_room_browser(rooms: Array) -> void:
+	if not mp_browser_vbox:
+		return
+	for c in mp_browser_vbox.get_children():
+		c.queue_free()
+
+	if rooms.is_empty():
+		var emp = Label.new()
+		emp.text = "⏳ Đang tự động dò tìm phòng trong mạng...\n(Khi bạn bè tạo phòng, phòng sẽ xuất hiện ngay tại đây)"
+		emp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		emp.add_theme_font_override("font", font_mono)
+		emp.add_theme_font_size_override("font_size", 11)
+		emp.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85))
+		mp_browser_vbox.add_child(emp)
+		return
+
+	for r in rooms:
+		var r_panel = PanelContainer.new()
+		var r_sb = StyleBoxFlat.new()
+		r_sb.bg_color = Color(0.04, 0.08, 0.12, 0.88)
+		r_sb.border_width_left = 1
+		r_sb.border_width_top = 1
+		r_sb.border_width_right = 1
+		r_sb.border_width_bottom = 1
+		r_sb.border_color = Color(0.2, 0.75, 0.6, 0.8)
+		r_sb.content_margin_left = 10
+		r_sb.content_margin_right = 10
+		r_sb.content_margin_top = 8
+		r_sb.content_margin_bottom = 8
+		r_sb.corner_radius_top_left = 4
+		r_sb.corner_radius_top_right = 4
+		r_sb.corner_radius_bottom_left = 4
+		r_sb.corner_radius_bottom_right = 4
+		r_panel.add_theme_stylebox_override("panel", r_sb)
+
+		var r_hb = HBoxContainer.new()
+		r_hb.add_theme_constant_override("separation", 10)
+		r_panel.add_child(r_hb)
+
+		var info_vbox = VBoxContainer.new()
+		info_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info_vbox.add_theme_constant_override("separation", 2)
+		r_hb.add_child(info_vbox)
+
+		var r_name_lbl = Label.new()
+		r_name_lbl.text = "🏢 " + str(r.get("name", "Shift-Room"))
+		r_name_lbl.add_theme_font_override("font", font_mono)
+		r_name_lbl.add_theme_font_size_override("font_size", 13)
+		r_name_lbl.add_theme_color_override("font_color", Color(0.3, 1.0, 0.8))
+		info_vbox.add_child(r_name_lbl)
+
+		var r_sub_lbl = Label.new()
+		r_sub_lbl.text = "Chủ phòng: %s  •  Số người: %s/5" % [str(r.get("host", "Janitor")), str(r.get("players", "1"))]
+		r_sub_lbl.add_theme_font_override("font", font_mono)
+		r_sub_lbl.add_theme_font_size_override("font_size", 11)
+		r_sub_lbl.add_theme_color_override("font_color", Color(0.7, 0.8, 0.88))
+		info_vbox.add_child(r_sub_lbl)
+
+		var btn_join = Button.new()
+		btn_join.text = "👉 VÀO PHÒNG"
+		btn_join.custom_minimum_size = Vector2(110, 32)
+		btn_join.add_theme_font_override("font", font_mono)
+		_style_menu_button(btn_join, Color(0.2, 0.95, 0.55), Color(0.04, 0.22, 0.12))
+		var r_code = str(r.get("code", ""))
+		var target_ip = str(r.get("ip", "127.0.0.1"))
+		var target_port = int(r.get("port", 8910))
+		btn_join.pressed.connect(func():
+			if r_code != "":
+				mp_join_code_requested.emit(r_code)
+			else:
+				_on_join_room_clicked(target_ip, target_port)
+		)
+		r_hb.add_child(btn_join)
+
+		mp_browser_vbox.add_child(r_panel)
+
+func _on_direct_connect_pressed() -> void:
+	var ip = mp_ip_input.text.strip_edges() if mp_ip_input else "127.0.0.1"
+	if ip == "": ip = "127.0.0.1"
+	var port = int(mp_port_input.text.strip_edges()) if mp_port_input else 8910
+	if port <= 0: port = 8910
+	if mp_callsign_input.text.strip_edges() != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr:
+			net_mgr.local_player_name = mp_callsign_input.text.strip_edges()
+	mp_scan_status.text = "Connecting to %s:%d..." % [ip, port]
+	mp_join_room_requested.emit(ip, port)
+
+func _on_quick_join_pressed() -> void:
+	if mp_callsign_input.text.strip_edges() != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr:
+			net_mgr.local_player_name = mp_callsign_input.text.strip_edges()
+	mp_scan_status.text = "Broadcasting LAN beacon inquiry..."
+	mp_quick_join_requested.emit()
+
+func update_lobby_room_code(code: String) -> void:
+	if mp_lobby_code_label:
+		mp_lobby_code_label.text = "MÃ PHÒNG: " + code
+	if mp_scan_status:
+		mp_scan_status.text = ""
+
+func update_lobby_ip(_ip_text: String) -> void:
+	pass
+
+func update_lobby_upnp_status(_status_str: String) -> void:
+	pass
+
+func _build_mp_lobby_panel() -> void:
+	mp_lobby_panel = PanelContainer.new()
+	mp_lobby_panel.name = "MultiplayerLobbyPanel"
+	mp_lobby_panel.visible = false
+	mp_lobby_panel.set_anchors_preset(Control.PRESET_CENTER)
+	mp_lobby_panel.custom_minimum_size = Vector2(580, 520)
+	mp_lobby_panel.offset_left = -290.0
+	mp_lobby_panel.offset_right = 290.0
+	mp_lobby_panel.offset_top = -260.0
+	mp_lobby_panel.offset_bottom = 260.0
+
+	var lob_sb = StyleBoxFlat.new()
+	lob_sb.bg_color = Color(0.02, 0.04, 0.08, 0.96)
+	lob_sb.border_width_left = 2
+	lob_sb.border_width_top = 2
+	lob_sb.border_width_right = 2
+	lob_sb.border_width_bottom = 2
+	lob_sb.border_color = Color(0.95, 0.65, 0.15, 0.9)
+	lob_sb.content_margin_left = 18
+	lob_sb.content_margin_right = 18
+	lob_sb.content_margin_top = 16
+	lob_sb.content_margin_bottom = 16
+	lob_sb.corner_radius_top_left = 6
+	lob_sb.corner_radius_top_right = 6
+	lob_sb.corner_radius_bottom_left = 6
+	lob_sb.corner_radius_bottom_right = 6
+	mp_lobby_panel.add_theme_stylebox_override("panel", lob_sb)
+	add_child(mp_lobby_panel)
+
+	var lob_vbox = VBoxContainer.new()
+	lob_vbox.add_theme_constant_override("separation", 10)
+	mp_lobby_panel.add_child(lob_vbox)
+
+	mp_lobby_title = Label.new()
+	mp_lobby_title.text = "CO-OP SHIFT LOBBY"
+	mp_lobby_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_lobby_title.add_theme_font_override("font", font_mono)
+	mp_lobby_title.add_theme_font_size_override("font_size", 18)
+	mp_lobby_title.add_theme_color_override("font_color", Color(0.95, 0.75, 0.2))
+	lob_vbox.add_child(mp_lobby_title)
+
+	mp_lobby_info = Label.new()
+	mp_lobby_info.text = "Room: Shift-Room | Night 1 | Tasks x1.5 | Supplies x1.5"
+	mp_lobby_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_lobby_info.add_theme_font_override("font", font_mono)
+	mp_lobby_info.add_theme_font_size_override("font_size", 12)
+	mp_lobby_info.add_theme_color_override("font_color", Color(0.65, 0.75, 0.82))
+	lob_vbox.add_child(mp_lobby_info)
+
+	# Room Code & IP Banner Box
+	var code_box = PanelContainer.new()
+	var cb_sb = StyleBoxFlat.new()
+	cb_sb.bg_color = Color(0.04, 0.10, 0.14, 0.95)
+	cb_sb.border_width_left = 1
+	cb_sb.border_width_top = 1
+	cb_sb.border_width_right = 1
+	cb_sb.border_width_bottom = 1
+	cb_sb.border_color = Color(0.2, 0.95, 0.8, 0.8)
+	cb_sb.content_margin_left = 12
+	cb_sb.content_margin_right = 12
+	cb_sb.content_margin_top = 8
+	cb_sb.content_margin_bottom = 8
+	cb_sb.corner_radius_top_left = 5
+	cb_sb.corner_radius_top_right = 5
+	cb_sb.corner_radius_bottom_left = 5
+	cb_sb.corner_radius_bottom_right = 5
+	code_box.add_theme_stylebox_override("panel", cb_sb)
+	lob_vbox.add_child(code_box)
+
+	var code_inner_vbox = VBoxContainer.new()
+	code_inner_vbox.add_theme_constant_override("separation", 6)
+	code_box.add_child(code_inner_vbox)
+
+	# 1. Room Code Row
+	var code_hb = HBoxContainer.new()
+	code_hb.add_theme_constant_override("separation", 10)
+	code_inner_vbox.add_child(code_hb)
+
+	mp_lobby_code_label = Label.new()
+	mp_lobby_code_label.text = "MÃ PHÒNG: [Đang khởi tạo...]"
+	mp_lobby_code_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_lobby_code_label.add_theme_font_override("font", font_mono)
+	mp_lobby_code_label.add_theme_font_size_override("font_size", 14)
+	mp_lobby_code_label.add_theme_color_override("font_color", Color(0.25, 1.0, 0.8))
+	code_hb.add_child(mp_lobby_code_label)
+
+	mp_btn_copy_code = Button.new()
+	mp_btn_copy_code.text = "📋 SAO CHÉP MÃ"
+	mp_btn_copy_code.custom_minimum_size = Vector2(130, 28)
+	mp_btn_copy_code.add_theme_font_override("font", font_mono)
+	mp_btn_copy_code.pressed.connect(func():
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		var code = ""
+		if net_mgr:
+			code = net_mgr.get("room_code") if "room_code" in net_mgr else net_mgr.get("current_room_code")
+		if (code == null or code == "") and mp_lobby_code_label.text.contains("AGY-"):
+			code = mp_lobby_code_label.text.split("MÃ PHÒNG: ")[-1].strip_edges()
+		if code != null and code != "":
+			DisplayServer.clipboard_set(str(code))
+			show_toast("Đã sao chép mã phòng: %s" % str(code), Color(0.2, 1.0, 0.6))
+		else:
+			show_toast("Mã phòng chưa sẵn sàng!", Color(1.0, 0.6, 0.2))
+	)
+	code_hb.add_child(mp_btn_copy_code)
+
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 220)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lob_vbox.add_child(scroll)
+
+	mp_lobby_player_list = VBoxContainer.new()
+	mp_lobby_player_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_lobby_player_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(mp_lobby_player_list)
+
+	var lob_btns = HBoxContainer.new()
+	lob_btns.add_theme_constant_override("separation", 10)
+	lob_vbox.add_child(lob_btns)
+
+	mp_btn_lobby_ready = Button.new()
+	mp_btn_lobby_ready.text = "READY UP"
+	mp_btn_lobby_ready.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_lobby_ready.add_theme_font_override("font", font_mono)
+	mp_btn_lobby_ready.pressed.connect(func():
+		mp_local_is_ready = not mp_local_is_ready
+		mp_btn_lobby_ready.text = "CANCEL READY" if mp_local_is_ready else "READY UP"
+		mp_toggle_ready_requested.emit(mp_local_is_ready)
+	)
+	lob_btns.add_child(mp_btn_lobby_ready)
+
+	mp_btn_lobby_start = Button.new()
+	mp_btn_lobby_start.text = "START SHIFT (HOST)"
+	mp_btn_lobby_start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_lobby_start.add_theme_font_override("font", font_mono)
+	mp_btn_lobby_start.pressed.connect(func():
+		mp_start_shift_requested.emit()
+	)
+	lob_btns.add_child(mp_btn_lobby_start)
+
+	var btn_leave = Button.new()
+	btn_leave.text = "LEAVE"
+	btn_leave.custom_minimum_size = Vector2(90, 0)
+	btn_leave.add_theme_font_override("font", font_mono)
+	btn_leave.pressed.connect(func():
+		mp_leave_room_requested.emit()
+		hide_mp_lobby()
+		main_menu.visible = true
+	)
+	lob_btns.add_child(btn_leave)
+
+func _build_mp_scoreboard_panel() -> void:
+	mp_scoreboard_panel = PanelContainer.new()
+	mp_scoreboard_panel.name = "MultiplayerScoreboardPanel"
+	mp_scoreboard_panel.visible = false
+	mp_scoreboard_panel.set_anchors_preset(Control.PRESET_CENTER)
+	mp_scoreboard_panel.custom_minimum_size = Vector2(680, 480)
+	mp_scoreboard_panel.offset_left = -340.0
+	mp_scoreboard_panel.offset_right = 340.0
+	mp_scoreboard_panel.offset_top = -240.0
+	mp_scoreboard_panel.offset_bottom = 240.0
+
+	var sc_sb = StyleBoxFlat.new()
+	sc_sb.bg_color = Color(0.02, 0.03, 0.06, 0.97)
+	sc_sb.border_width_left = 2
+	sc_sb.border_width_top = 2
+	sc_sb.border_width_right = 2
+	sc_sb.border_width_bottom = 2
+	sc_sb.border_color = Color(0.95, 0.8, 0.2, 0.9)
+	sc_sb.content_margin_left = 20
+	sc_sb.content_margin_right = 20
+	sc_sb.content_margin_top = 16
+	sc_sb.content_margin_bottom = 16
+	sc_sb.corner_radius_top_left = 6
+	sc_sb.corner_radius_top_right = 6
+	sc_sb.corner_radius_bottom_left = 6
+	sc_sb.corner_radius_bottom_right = 6
+	mp_scoreboard_panel.add_theme_stylebox_override("panel", sc_sb)
+	add_child(mp_scoreboard_panel)
+
+	var sc_vbox = VBoxContainer.new()
+	sc_vbox.add_theme_constant_override("separation", 10)
+	mp_scoreboard_panel.add_child(sc_vbox)
+
+	mp_scoreboard_title = Label.new()
+	mp_scoreboard_title.text = "★ SHIFT SUMMARY — EMPLOYEE EVALUATION ★"
+	mp_scoreboard_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_scoreboard_title.add_theme_font_override("font", font_mono)
+	mp_scoreboard_title.add_theme_font_size_override("font_size", 18)
+	mp_scoreboard_title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.25))
+	sc_vbox.add_child(mp_scoreboard_title)
+
+	mp_scoreboard_winner = Label.new()
+	mp_scoreboard_winner.text = "WINNER: Janitor #1"
+	mp_scoreboard_winner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_scoreboard_winner.add_theme_font_override("font", font_mono)
+	mp_scoreboard_winner.add_theme_font_size_override("font_size", 14)
+	mp_scoreboard_winner.add_theme_color_override("font_color", Color(0.3, 0.95, 0.65))
+	sc_vbox.add_child(mp_scoreboard_winner)
+
+	# Headers Row
+	var hdr = HBoxContainer.new()
+	var h_rank = Label.new(); h_rank.text = "RANK"; h_rank.custom_minimum_size = Vector2(48, 0)
+	var h_name = Label.new(); h_name.text = "JANITOR"; h_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var h_wages = Label.new(); h_wages.text = "WAGES"; h_wages.custom_minimum_size = Vector2(80, 0); h_wages.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var h_stuns = Label.new(); h_stuns.text = "STUNS"; h_stuns.custom_minimum_size = Vector2(65, 0); h_stuns.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var h_kills = Label.new(); h_kills.text = "KILLS"; h_kills.custom_minimum_size = Vector2(65, 0); h_kills.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var h_deaths = Label.new(); h_deaths.text = "DOWNED"; h_deaths.custom_minimum_size = Vector2(65, 0); h_deaths.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var h_tasks = Label.new(); h_tasks.text = "TASKS"; h_tasks.custom_minimum_size = Vector2(65, 0); h_tasks.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	for h in [h_rank, h_name, h_wages, h_stuns, h_kills, h_deaths, h_tasks]:
+		h.add_theme_font_override("font", font_mono)
+		h.add_theme_font_size_override("font_size", 11)
+		h.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+		hdr.add_child(h)
+	sc_vbox.add_child(hdr)
+
+	var sep = HSeparator.new()
+	sc_vbox.add_child(sep)
+
+	var sc_scroll = ScrollContainer.new()
+	sc_scroll.custom_minimum_size = Vector2(0, 180)
+	sc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc_vbox.add_child(sc_scroll)
+
+	mp_scoreboard_table = VBoxContainer.new()
+	mp_scoreboard_table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_scoreboard_table.add_theme_constant_override("separation", 6)
+	sc_scroll.add_child(mp_scoreboard_table)
+
+	var tie_info = Label.new()
+	tie_info.text = "Tie-breaker order: Total Wages ($) > Boss Stuns > Specimens Killed > Fewest Downed > Tasks Completed"
+	tie_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tie_info.add_theme_font_override("font", font_mono)
+	tie_info.add_theme_font_size_override("font_size", 10)
+	tie_info.add_theme_color_override("font_color", Color(0.48, 0.55, 0.62))
+	sc_vbox.add_child(tie_info)
+
+	var btn_row = HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 12)
+	sc_vbox.add_child(btn_row)
+
+	mp_btn_scoreboard_next = Button.new()
+	mp_btn_scoreboard_next.text = "CONTINUE TO NEXT SHIFT (HOST)"
+	mp_btn_scoreboard_next.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_scoreboard_next.add_theme_font_override("font", font_mono)
+	mp_btn_scoreboard_next.pressed.connect(func():
+		hide_mp_scoreboard()
+		mp_start_shift_requested.emit()
+	)
+	btn_row.add_child(mp_btn_scoreboard_next)
+
+	mp_btn_scoreboard_menu = Button.new()
+	mp_btn_scoreboard_menu.text = "EXIT TO LOBBY / MENU"
+	mp_btn_scoreboard_menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_btn_scoreboard_menu.add_theme_font_override("font", font_mono)
+	mp_btn_scoreboard_menu.pressed.connect(func():
+		hide_mp_scoreboard()
+		quit_to_menu.emit()
+	)
+	btn_row.add_child(mp_btn_scoreboard_menu)
+
+func show_multiplayer_menu() -> void:
+	if mp_panel:
+		mp_panel.visible = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr and net_mgr.has_method("start_room_browser"):
+			net_mgr.start_room_browser()
+
+func hide_multiplayer_menu() -> void:
+	if mp_panel:
+		mp_panel.visible = false
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr and net_mgr.has_method("stop_room_browser"):
+			net_mgr.stop_room_browser()
+
+func show_mp_lobby(room_name: String, day_num: int, map_idx: int, task_mult: float, supplies_mult: float) -> void:
+	hide_multiplayer_menu()
+	if mp_lobby_panel:
+		mp_lobby_panel.visible = true
+		var map_str = "Random Variant" if map_idx < 0 else ("Map #%d" % (map_idx + 1))
+		mp_lobby_info.text = "Room: %s  |  Night %d (%s)  |  Tasks x%.1f  |  Supplies x%.1f" % [
+			room_name, day_num, map_str, task_mult, supplies_mult
+		]
+		mp_local_is_ready = false
+		mp_btn_lobby_ready.text = "READY UP"
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func hide_mp_lobby() -> void:
+	if mp_lobby_panel:
+		mp_lobby_panel.visible = false
+
+func update_mp_lobby(players: Dictionary, is_host: bool) -> void:
+	if not mp_lobby_player_list:
+		return
+	for child in mp_lobby_player_list.get_children():
+		child.queue_free()
+
+	if mp_btn_lobby_start:
+		mp_btn_lobby_start.visible = is_host
+	if mp_btn_copy_code:
+		mp_btn_copy_code.visible = is_host
+
+	for pid in players.keys():
+		var p = players[pid]
+		var row = HBoxContainer.new()
+		var badge = Label.new()
+		badge.text = "[HOST]" if p.get("is_host", false) else "[JANITOR]"
+		badge.custom_minimum_size = Vector2(75, 0)
+		badge.add_theme_font_override("font", font_mono)
+		badge.add_theme_font_size_override("font_size", 12)
+		badge.add_theme_color_override("font_color", Color(0.95, 0.75, 0.2) if p.get("is_host", false) else Color(0.45, 0.75, 0.95))
+		row.add_child(badge)
+
+		var name_lbl = Label.new()
+		name_lbl.text = str(p.get("name", "Janitor"))
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.add_theme_font_override("font", font_mono)
+		name_lbl.add_theme_font_size_override("font_size", 13)
+		row.add_child(name_lbl)
+
+		var ready_lbl = Label.new()
+		var rdy = bool(p.get("ready", false))
+		ready_lbl.text = "[READY]" if rdy else "[PREPARING]"
+		ready_lbl.add_theme_font_override("font", font_mono)
+		ready_lbl.add_theme_font_size_override("font_size", 12)
+		ready_lbl.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45) if rdy else Color(0.95, 0.55, 0.2))
+		row.add_child(ready_lbl)
+
+		mp_lobby_player_list.add_child(row)
+
+func show_mp_scoreboard(stats: Array, is_final_night: bool, is_host: bool) -> void:
+	if not mp_scoreboard_panel:
+		return
+	mp_scoreboard_panel.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	if is_final_night:
+		mp_scoreboard_title.text = "★ GRAND JANITOR EVALUATION — NIGHT 5 FINAL ★"
+		mp_btn_scoreboard_next.text = "CONCLUDE EVALUATION (HOST)"
+	else:
+		mp_scoreboard_title.text = "SHIFT EVALUATION — JANITOR PERFORMANCE & WAGES"
+		mp_btn_scoreboard_next.text = "PROCEED TO NEXT SHIFT (HOST)"
+
+	mp_btn_scoreboard_next.visible = is_host
+
+	for c in mp_scoreboard_table.get_children():
+		c.queue_free()
+
+	if stats.is_empty():
+		return
+
+	var top_p = stats[0]
+	if is_final_night:
+		mp_scoreboard_winner.text = "🏆 WINNER: %s — EARNED $%d TOTAL WAGES!" % [
+			top_p.get("name", "Janitor"),
+			top_p.get("wages", 0)
+		]
+	else:
+		mp_scoreboard_winner.text = "★ EMPLOYEE OF THE SHIFT: %s ($%d Wages)" % [
+			top_p.get("name", "Janitor"),
+			top_p.get("wages", 0)
+		]
+
+	for i in range(stats.size()):
+		var p = stats[i]
+		var r_box = HBoxContainer.new()
+
+		var rk = Label.new()
+		rk.text = "#%d" % (i + 1)
+		rk.custom_minimum_size = Vector2(48, 0)
+		rk.add_theme_font_override("font", font_mono)
+		rk.add_theme_font_size_override("font_size", 12)
+		rk.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2) if i == 0 else Color(0.7, 0.75, 0.8))
+		r_box.add_child(rk)
+
+		var nm = Label.new()
+		nm.text = str(p.get("name", "Janitor"))
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.add_theme_font_override("font", font_mono)
+		nm.add_theme_font_size_override("font_size", 13)
+		nm.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5) if i == 0 else Color(0.9, 0.92, 0.95))
+		r_box.add_child(nm)
+
+		var wg = Label.new()
+		wg.text = "$%d" % int(p.get("wages", 0))
+		wg.custom_minimum_size = Vector2(80, 0)
+		wg.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		wg.add_theme_font_override("font", font_mono)
+		wg.add_theme_font_size_override("font_size", 13)
+		wg.add_theme_color_override("font_color", Color(0.3, 0.95, 0.55))
+		r_box.add_child(wg)
+
+		var stn = Label.new()
+		stn.text = str(p.get("stuns", 0))
+		stn.custom_minimum_size = Vector2(65, 0)
+		stn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		stn.add_theme_font_override("font", font_mono)
+		stn.add_theme_font_size_override("font_size", 12)
+		r_box.add_child(stn)
+
+		var kl = Label.new()
+		kl.text = str(p.get("kills", 0))
+		kl.custom_minimum_size = Vector2(65, 0)
+		kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		kl.add_theme_font_override("font", font_mono)
+		kl.add_theme_font_size_override("font_size", 12)
+		r_box.add_child(kl)
+
+		var dt = Label.new()
+		dt.text = str(p.get("deaths", 0))
+		dt.custom_minimum_size = Vector2(65, 0)
+		dt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		dt.add_theme_font_override("font", font_mono)
+		dt.add_theme_font_size_override("font_size", 12)
+		r_box.add_child(dt)
+
+		var tk = Label.new()
+		tk.text = str(p.get("tasks", 0))
+		tk.custom_minimum_size = Vector2(65, 0)
+		tk.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		tk.add_theme_font_override("font", font_mono)
+		tk.add_theme_font_size_override("font_size", 12)
+		r_box.add_child(tk)
+
+		mp_scoreboard_table.add_child(r_box)
+
+func hide_mp_scoreboard() -> void:
+	if mp_scoreboard_panel:
+		mp_scoreboard_panel.visible = false
+
+# --- IN-GAME CHAT SYSTEM ---
+func _build_mp_chat_panel() -> void:
+	mp_chat_panel = PanelContainer.new()
+	mp_chat_panel.name = "MultiplayerChatPanel"
+	mp_chat_panel.visible = false
+	mp_chat_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	mp_chat_panel.custom_minimum_size = Vector2(380, 180)
+	mp_chat_panel.offset_left = 18.0
+	mp_chat_panel.offset_top = -365.0
+	mp_chat_panel.offset_right = 398.0
+	mp_chat_panel.offset_bottom = -185.0
+	mp_chat_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	var chat_sb = StyleBoxFlat.new()
+	chat_sb.bg_color = Color(0.02, 0.04, 0.07, 0.75)
+	chat_sb.border_width_left = 1
+	chat_sb.border_width_top = 1
+	chat_sb.border_width_right = 1
+	chat_sb.border_width_bottom = 1
+	chat_sb.border_color = Color(0.18, 0.35, 0.45, 0.7)
+	chat_sb.content_margin_left = 8
+	chat_sb.content_margin_right = 8
+	chat_sb.content_margin_top = 6
+	chat_sb.content_margin_bottom = 6
+	chat_sb.corner_radius_top_left = 4
+	chat_sb.corner_radius_top_right = 4
+	chat_sb.corner_radius_bottom_left = 4
+	chat_sb.corner_radius_bottom_right = 4
+	mp_chat_panel.add_theme_stylebox_override("panel", chat_sb)
+	game_hud.add_child(mp_chat_panel)
+
+	var chat_vbox = VBoxContainer.new()
+	chat_vbox.add_theme_constant_override("separation", 4)
+	mp_chat_panel.add_child(chat_vbox)
+
+	# Message Log Scroll
+	mp_chat_scroll = ScrollContainer.new()
+	mp_chat_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mp_chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	chat_vbox.add_child(mp_chat_scroll)
+
+	mp_chat_vbox = VBoxContainer.new()
+	mp_chat_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_chat_vbox.add_theme_constant_override("separation", 2)
+	mp_chat_scroll.add_child(mp_chat_vbox)
+
+	# Input row
+	var input_row = HBoxContainer.new()
+	input_row.add_theme_constant_override("separation", 6)
+	chat_vbox.add_child(input_row)
+
+	mp_chat_input = LineEdit.new()
+	mp_chat_input.placeholder_text = "Nhập tin nhắn [Enter]..."
+	mp_chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mp_chat_input.custom_minimum_size = Vector2(0, 26)
+	mp_chat_input.add_theme_font_override("font", font_mono)
+	mp_chat_input.add_theme_font_size_override("font_size", 12)
+	input_row.add_child(mp_chat_input)
+
+	mp_btn_send_chat = Button.new()
+	mp_btn_send_chat.text = "GỬI"
+	mp_btn_send_chat.custom_minimum_size = Vector2(50, 26)
+	mp_btn_send_chat.add_theme_font_override("font", font_mono)
+	mp_btn_send_chat.add_theme_font_size_override("font_size", 11)
+	input_row.add_child(mp_btn_send_chat)
+
+	mp_chat_input.text_submitted.connect(_on_chat_text_submitted)
+	mp_btn_send_chat.pressed.connect(func(): _on_chat_text_submitted(mp_chat_input.text))
+
+func _on_chat_text_submitted(txt: String) -> void:
+	var msg = txt.strip_edges()
+	if msg != "":
+		var net_mgr = get_node_or_null("/root/NetworkManager")
+		if net_mgr and bool(net_mgr.get("is_multiplayer_active")):
+			var sender = str(net_mgr.get("local_player_name"))
+			if net_mgr.has_method("send_chat_message"):
+				net_mgr.send_chat_message(sender, msg, false)
+			else:
+				net_mgr.rpc("rpc_send_chat", sender, msg, false)
+	close_chat_input()
+
+func add_chat_message(sender: String, message: String, is_system: bool = false) -> void:
+	if not mp_chat_vbox:
+		return
+	mp_chat_panel.visible = true
+
+	var lbl = RichTextLabel.new()
+	lbl.fit_content = true
+	lbl.bbcode_enabled = true
+	lbl.scroll_active = false
+	lbl.custom_minimum_size = Vector2(0, 16)
+	lbl.add_theme_font_override("normal_font", font_mono)
+	lbl.add_theme_font_size_override("normal_font_size", 12)
+
+	if is_system:
+		lbl.text = "[color=#f2c94c]<b>[HỆ THỐNG]:</b>[/color] [color=#e0e0e0]%s[/color]" % message
+	else:
+		lbl.text = "[color=#27ae60]<b>[%s]:</b>[/color] [color=#ffffff]%s[/color]" % [sender, message]
+
+	mp_chat_vbox.add_child(lbl)
+
+	# Keep maximum 50 messages
+	while mp_chat_vbox.get_child_count() > 50:
+		var c = mp_chat_vbox.get_child(0)
+		mp_chat_vbox.remove_child(c)
+		c.queue_free()
+
+	# Auto scroll to bottom next frame
+	get_tree().process_frame.connect(func():
+		if mp_chat_scroll:
+			mp_chat_scroll.scroll_vertical = int(mp_chat_scroll.get_v_scroll_bar().max_value)
+	, CONNECT_ONE_SHOT)
+
+func open_chat_input() -> void:
+	if mp_chat_panel:
+		mp_chat_panel.visible = true
+	if mp_chat_input:
+		mp_chat_input.grab_focus()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func close_chat_input() -> void:
+	if mp_chat_input:
+		mp_chat_input.text = ""
+		mp_chat_input.release_focus()
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func toggle_chat_input() -> void:
+	if is_chat_focused():
+		close_chat_input()
+	else:
+		open_chat_input()
+
+func is_chat_focused() -> bool:
+	return mp_chat_input and mp_chat_input.has_focus()
+
+# --- SPECTATOR MODE HUD ---
+func _build_mp_spectator_banner() -> void:
+	mp_spectator_banner = PanelContainer.new()
+	mp_spectator_banner.name = "SpectatorBanner"
+	mp_spectator_banner.visible = false
+	mp_spectator_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	mp_spectator_banner.custom_minimum_size = Vector2(440, 56)
+	mp_spectator_banner.offset_left = -220.0
+	mp_spectator_banner.offset_top = 22.0
+	mp_spectator_banner.offset_right = 220.0
+	mp_spectator_banner.offset_bottom = 78.0
+	mp_spectator_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var spec_sb = StyleBoxFlat.new()
+	spec_sb.bg_color = Color(0.12, 0.02, 0.03, 0.88)
+	spec_sb.border_width_left = 2
+	spec_sb.border_width_top = 2
+	spec_sb.border_width_right = 2
+	spec_sb.border_width_bottom = 2
+	spec_sb.border_color = Color(0.95, 0.25, 0.25, 0.9)
+	spec_sb.corner_radius_top_left = 6
+	spec_sb.corner_radius_top_right = 6
+	spec_sb.corner_radius_bottom_left = 6
+	spec_sb.corner_radius_bottom_right = 6
+	mp_spectator_banner.add_theme_stylebox_override("panel", spec_sb)
+	game_hud.add_child(mp_spectator_banner)
+
+	mp_spectator_label = Label.new()
+	mp_spectator_label.text = "🔴 BẠN ĐÃ TỬ NẠN — ĐANG QUAN SÁT ĐỒNG ĐỘI\n[A] / [D] hoặc [Click Chuột] để chuyển người"
+	mp_spectator_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mp_spectator_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mp_spectator_label.add_theme_font_override("font", font_mono)
+	mp_spectator_label.add_theme_font_size_override("font_size", 12)
+	mp_spectator_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.85))
+	mp_spectator_banner.add_child(mp_spectator_label)
+
+func show_spectator_banner(text: String) -> void:
+	if mp_spectator_banner:
+		mp_spectator_banner.visible = true
+	if mp_spectator_label:
+		mp_spectator_label.text = text
+
+func hide_spectator_banner() -> void:
+	if mp_spectator_banner:
+		mp_spectator_banner.visible = false
+
+
