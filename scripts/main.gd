@@ -632,14 +632,14 @@ func _handle_baton_attack() -> void:
 	var hit_type: String = "miss"
 	var cost: float = 0.0
 
-	# Reach is half of mop reach:
-	# Cloak: 1.65m
+	# Reach for Shock Baton:
+	# Cloak: 3.2m
 	var best_cloak: Node3D = null
-	var best_cloak_dist: float = 1.65
+	var best_cloak_dist: float = 3.2
 	for clk in cloaks:
 		if is_instance_valid(clk) and (clk.get("active") == true):
 			var d_clk = Vector2(player.global_position.x - clk.global_position.x, player.global_position.z - clk.global_position.z).length()
-			if d_clk < best_cloak_dist:
+			if d_clk < best_cloak_dist and abs(player.global_position.y - clk.global_position.y) < 2.5:
 				best_cloak_dist = d_clk
 				best_cloak = clk
 
@@ -647,17 +647,17 @@ func _handle_baton_attack() -> void:
 		if best_cloak.hit_by_mop():
 			cost = 10.0
 			hit_type = "cultist"
-			hud.show_toast("BATON CRACKLES AGAINST CLOAK! (-10% durability)", Color(0.85, 0.65, 1.0))
+			hud.show_toast("⚡ BATON CRACKLES AGAINST CLOAK! (-10% durability)", Color(0.85, 0.65, 1.0))
 
-	# Small monsters (Crawler 1.6m, Cultist 1.6m)
+	# Small monsters (Crawler 3.4m, Cultist 3.4m)
 	var best_ent: Node3D = null
-	var best_dist: float = 1.6
+	var best_dist: float = 3.4
 	var best_is_crawler: bool = false
 
 	for cr in crawlers:
 		if is_instance_valid(cr) and cr.active and not cr.is_dead:
 			var d = Vector2(player.global_position.x - cr.global_position.x, player.global_position.z - cr.global_position.z).length()
-			if d < best_dist:
+			if d < best_dist and abs(player.global_position.y - cr.global_position.y) < 2.5:
 				best_dist = d
 				best_ent = cr
 				best_is_crawler = true
@@ -665,7 +665,7 @@ func _handle_baton_attack() -> void:
 	for cu in cultists:
 		if is_instance_valid(cu) and cu.active and not cu.is_dead:
 			var d = Vector2(player.global_position.x - cu.global_position.x, player.global_position.z - cu.global_position.z).length()
-			if d < best_dist:
+			if d < best_dist and abs(player.global_position.y - cu.global_position.y) < 2.5:
 				best_dist = d
 				best_ent = cu
 				best_is_crawler = false
@@ -675,36 +675,36 @@ func _handle_baton_attack() -> void:
 			if best_ent.hit_by_mop():
 				cost = 3.0 # "đập quái nhỏ chỉ mất 3% đồ bền"
 				hit_type = "crawler"
-				hud.show_toast("Lesser specimen crushed with Shock Baton! (-3% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.75, 0.95, 0.4))
+				hud.show_toast("⚡ CRUSHED! Crawler pulverized by Shock Baton! (-3% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.75, 0.95, 0.4))
 		else:
 			if best_ent.hit_by_mop():
 				cost = 10.0 # "quái chính hoặc same tier thì chỉ mất 10%"
 				hit_type = "cultist"
-				hud.show_toast("Cultist staggered with Shock Baton! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.98, 0.65, 0.65))
+				hud.show_toast("⚡ STAGGERED! Cultist shocked with Baton! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.98, 0.65, 0.65))
 
-	# Hangers within 1.8m
+	# Hangers within 3.2m
 	for h in hangers:
 		if is_instance_valid(h) and (h.get("active") == true) and h.get("state") != "STUNNED":
 			var dh_flat = Vector2(player.global_position.x - h.global_position.x, player.global_position.z - h.global_position.z).length()
-			if dh_flat <= 1.8:
+			if dh_flat <= 3.2 and abs(player.global_position.y - h.global_position.y) < 3.0:
 				if h.has_method("stun"):
 					h.stun(3.0)
 					cost = 10.0
 					hit_type = "cultist"
-					hud.show_toast("Hanger struck with Shock Baton! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.8, 0.8, 1.0))
+					hud.show_toast("⚡ Hanger struck with Shock Baton! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.8, 0.8, 1.0))
 					break
 
-	# Hunter within 2.2m (half of mop 4.4m)
+	# Hunter within 3.8m
 	if is_instance_valid(hunter) and hunter.active:
 		var dh = Vector2(player.global_position.x - hunter.global_position.x, player.global_position.z - hunter.global_position.z).length()
-		if dh <= 2.2:
+		if dh <= 3.8 and abs(player.global_position.y - hunter.global_position.y) < 2.8:
 			var res = hunter.hit_by_mop()
 			cost = 10.0 # "quái chính hoặc same tier thì chỉ mất 10%"
 			hit_type = "hunter"
 			if res == "stunned":
-				hud.show_toast("SHOCK BATON CRACKS ACROSS ITS JAW! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.25, 0.95, 0.65))
+				hud.show_toast("⚡ SHOCK BATON CRACKS ACROSS ITS JAW! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.25, 0.95, 0.65))
 			elif res == "ambush":
-				hud.show_toast("IT COLLAPSED… AMBUSH POSTURE (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.98, 0.75, 0.15))
+				hud.show_toast("⚡ IT COLLAPSED… AMBUSH POSTURE (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(0.98, 0.75, 0.15))
 			else:
 				hud.show_toast("THE ENTITY ENRAGED — IMMUNE! (-10% durability: %d%%)" % int(max(0.0, player.baton_durability - cost)), Color(1.0, 0.25, 0.25))
 

@@ -3,7 +3,7 @@ extends CharacterBody3D
 const VisualMaterialFactory = preload("res://scripts/visual_material_factory.gd")
 
 @export var move_speed: float = 3.1
-@export var kill_distance: float = 2.15
+@export var kill_distance: float = 1.45
 @export var is_active: bool = false
 var active: bool = false
 var is_dead: bool = false
@@ -321,6 +321,12 @@ func _physics_process(delta: float) -> void:
 
 	# Attack Player if already within strike distance (unless fleeing in terror from Hunter!)
 	if not afraid_of_hunter and not player_hiding and player.get("in_bite_sequence") != true and player.get("in_death_sequence") != true and player.get("is_dead") != true and p_floor == 1 and dist_to_player <= kill_distance and attack_cooldown <= 0.0:
+		if player.get("is_swinging_baton") == true:
+			hit_by_mop()
+			var hud_node = get_tree().root.find_child("HUD", true, false)
+			if hud_node and hud_node.has_method("show_toast"):
+				hud_node.show_toast("⚡ CRUSHED! Crawler intercepted mid-lunge by Shock Baton!", Color(0.25, 1.0, 0.5))
+			return
 		if player.has_method("is_baton_defending") and player.is_baton_defending():
 			if player.is_baton_parrying():
 				stun(3.0)

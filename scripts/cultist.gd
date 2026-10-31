@@ -834,6 +834,14 @@ func _trigger_cultist_kill() -> void:
 		var to_p = player.global_position - global_position
 		rotation.y = atan2(-to_p.x, -to_p.z)
 
+		# Baton Active Swing Check
+		if player.get("is_swinging_baton") == true:
+			if hit_by_mop():
+				var hud_node = get_tree().root.find_child("HUD", true, false)
+				if hud_node and hud_node.has_method("show_toast"):
+					hud_node.show_toast("⚡ INTERCEPTED! Cultist staggered mid-strike by Shock Baton!", Color(0.25, 1.0, 0.5))
+				return
+
 		# Baton Guard & Parry Check
 		if player.has_method("is_baton_defending") and player.is_baton_defending():
 			if player.is_baton_parrying():
