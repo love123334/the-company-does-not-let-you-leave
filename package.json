@@ -1,0 +1,14 @@
+{
+  "name": "the-company-does-not-let-you-leave",
+  "version": "1.0.0",
+  "description": "Cross-network Cloud WebSocket Relay Server for The Company Does Not Let You Leave",
+  "main": "server/relay_server.js",
+  "scripts": {
+    "start": "node server/relay_server.js",
+    "build": "echo Build complete"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
