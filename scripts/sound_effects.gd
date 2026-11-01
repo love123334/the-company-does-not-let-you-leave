@@ -19,6 +19,10 @@ var snd_whisper: AudioStreamWAV
 var snd_breath_gasp: AudioStreamWAV
 var snd_cloth_wrap: AudioStreamWAV
 var snd_metal_drag: AudioStreamWAV
+var snd_taser: AudioStreamWAV
+var snd_gate: AudioStreamWAV
+var snd_parry: AudioStreamWAV
+var snd_block: AudioStreamWAV
 
 var snd_ambient_work: AudioStreamWAV
 var snd_ambient_chase: AudioStreamWAV
@@ -61,6 +65,10 @@ func _generate_all_clean_sounds() -> void:
     snd_breath_gasp = _create_breath_or_cloth_wav(340.0, 190.0, 0.28, 0.48, 0.65)
     snd_cloth_wrap = _create_breath_or_cloth_wav(180.0, 95.0, 0.36, 0.52, 0.70)
     snd_metal_drag = _create_heavy_metal_drag_wav()
+    snd_taser = _create_electric_taser_wav()
+    snd_gate = _create_smooth_tone(140.0, 80.0, 0.45, 0.4)
+    snd_parry = _create_smooth_tone(1800.0, 900.0, 0.22, 0.5)
+    snd_block = _create_smooth_tone(120.0, 70.0, 0.16, 0.45)
     
     snd_ambient_work = _create_work_ambient()
     snd_ambient_chase = _create_chase_ambient()
@@ -418,6 +426,33 @@ func _create_heavy_metal_drag_wav() -> AudioStreamWAV:
         bytes[i * 2] = u16 & 0xFF
         bytes[i * 2 + 1] = (u16 >> 8) & 0xFF
 
+    var wav = AudioStreamWAV.new()
+    wav.format = AudioStreamWAV.FORMAT_16_BITS
+    wav.mix_rate = rate
+    wav.stereo = false
+    wav.data = bytes
+    return wav
+
+func _create_electric_taser_wav() -> AudioStreamWAV:
+    var rate: int = 22050
+    var dur: float = 0.35
+    var samples: int = int(dur * float(rate))
+    var bytes = PackedByteArray()
+    bytes.resize(samples * 2)
+    var phase: float = 0.0
+    for i in range(samples):
+        var t: float = float(i) / float(samples)
+        var freq: float = lerpf(1200.0, 320.0, t) + sin(t * 120.0) * 180.0
+        phase += (freq * TAU) / float(rate)
+        if phase > TAU:
+            phase -= TAU
+        var env: float = (1.0 - t) * (1.0 - t)
+        var spark_noise = (randf() * 2.0 - 1.0) * (0.6 if randf() < 0.4 else 0.1)
+        var sig: float = (sin(phase) * 0.6 + spark_noise * 0.4) * env * 0.65
+        var s16: int = int(clamp(sig * 32767.0, -32768.0, 32767.0))
+        var u16: int = s16 if s16 >= 0 else s16 + 65536
+        bytes[i * 2] = u16 & 0xFF
+        bytes[i * 2 + 1] = (u16 >> 8) & 0xFF
     var wav = AudioStreamWAV.new()
     wav.format = AudioStreamWAV.FORMAT_16_BITS
     wav.mix_rate = rate

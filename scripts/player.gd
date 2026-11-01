@@ -1286,8 +1286,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	var hud_popup = get_tree().root.find_child("HUD", true, false)
-	if hud_popup and (hud_popup.game_over_screen.visible or hud_popup.note_popup.visible or hud_popup.cutscene_player.visible or hud_popup.main_menu.visible or hud_popup.pause_menu.visible):
-		return
+	if hud_popup:
+		if hud_popup.has_method("is_chat_focused") and hud_popup.is_chat_focused():
+			return
+		if hud_popup.game_over_screen.visible or hud_popup.note_popup.visible or hud_popup.cutscene_player.visible or hud_popup.main_menu.visible or hud_popup.pause_menu.visible:
+			return
 
 	if is_hiding:
 		if event is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
@@ -1359,15 +1362,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if interact_cooldown <= 0.0:
 		var is_e = event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E
 		var is_lmb = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
-		if is_e or is_lmb:
-			var interacted = _handle_interaction()
-			if not interacted and is_lmb and not is_guarding:
-				if current_weapon == WeaponType.MOP:
-					mop_strike_requested.emit()
-				elif current_weapon == WeaponType.BATON:
+
+		if is_e:
+			_handle_interaction()
+		elif is_lmb:
+			if current_weapon == WeaponType.TASER:
+				weapon_attack_requested.emit(int(WeaponType.TASER))
+			elif current_weapon == WeaponType.BATON:
+				if not is_guarding:
 					weapon_attack_requested.emit(int(WeaponType.BATON))
-				elif current_weapon == WeaponType.TASER:
-					weapon_attack_requested.emit(int(WeaponType.TASER))
+			elif current_weapon == WeaponType.MOP:
+				var interacted = _handle_interaction()
+				if not interacted:
+					mop_strike_requested.emit()
 
 func _physics_process(delta: float) -> void:
 	# Keep current_floor synchronized based on vertical elevation (Floor 2 is at 11.4m, Floor 1 is at 0.0m)
@@ -1714,13 +1721,19 @@ func _update_interaction_prompt() -> void:
 	if interaction_ray.is_colliding():
 		var collider = interaction_ray.get_collider()
 		if collider and collider.get("prompt_text"):
-			hud_node.set_interaction_prompt(str(collider.get("prompt_text")))
+			if collider.is_in_group("spills") and current_weapon != WeaponType.MOP:
+				hud_node.set_interaction_prompt("[E] Đổi cây lau nhà & Lau sạch")
+			else:
+				hud_node.set_interaction_prompt(str(collider.get("prompt_text")))
 			return
 
 	for obj in get_tree().get_nodes_in_group("spills"):
 		if is_instance_valid(obj) and not obj.get_meta("_cleaned", false):
 			if global_position.distance_to(obj.global_position) < 2.6:
-				hud_node.set_interaction_prompt(str(obj.get("prompt_text")))
+				if current_weapon != WeaponType.MOP:
+					hud_node.set_interaction_prompt("[E] Đổi cây lau nhà & Lau sạch")
+				else:
+					hud_node.set_interaction_prompt(str(obj.get("prompt_text")))
 				return
 
 	if is_inside_cloak:
@@ -1861,6 +1874,11 @@ func _handle_interaction() -> bool:
 		var collider = interaction_ray.get_collider()
 		if collider and collider.has_method("interact"):
 			if collider.is_in_group("spills"):
+				if current_weapon != WeaponType.MOP:
+					equip_weapon(WeaponType.MOP)
+					var hud_node = _get_hud()
+					if hud_node and hud_node.has_method("show_toast"):
+						hud_node.show_toast("🧹 AUTO-EQUIPPED MOP TO CLEAN SPILL", Color(0.3, 0.9, 0.4), 2.0)
 				trigger_scrub_animation()
 			collider.interact(self)
 			return true
@@ -1868,6 +1886,11 @@ func _handle_interaction() -> bool:
 	for obj in get_tree().get_nodes_in_group("spills"):
 		if is_instance_valid(obj) and obj.has_method("interact") and not obj.get_meta("_cleaned", false):
 			if global_position.distance_to(obj.global_position) < 2.8:
+				if current_weapon != WeaponType.MOP:
+					equip_weapon(WeaponType.MOP)
+					var hud_node = _get_hud()
+					if hud_node and hud_node.has_method("show_toast"):
+						hud_node.show_toast("🧹 AUTO-EQUIPPED MOP TO CLEAN SPILL", Color(0.3, 0.9, 0.4), 2.0)
 				trigger_scrub_animation()
 				obj.interact(self)
 				return true

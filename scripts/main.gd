@@ -1319,7 +1319,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.physical_keycode:
 			KEY_ENTER, KEY_KP_ENTER:
 				if NetworkManager and NetworkManager.is_multiplayer_active and hud.game_hud.visible:
-					hud.toggle_chat_input()
+					if hud.is_chat_focused():
+						hud.submit_current_chat()
+					else:
+						hud.open_chat_input()
 					get_viewport().set_input_as_handled()
 					return
 			KEY_ESCAPE:

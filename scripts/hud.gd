@@ -1223,6 +1223,24 @@ func _process(delta: float) -> void:
 				if type_idx % 3 == 0:
 					SoundEffects.play(SoundEffects.snd_click, -18.0, 1.4)
 
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_KP_ENTER:
+			var net_mgr = get_node_or_null("/root/NetworkManager")
+			if net_mgr and net_mgr.get("is_multiplayer_active") == true and game_hud and game_hud.visible:
+				if not cutscene_player.visible and not note_popup.visible and not pause_menu.visible and not options_screen.visible:
+					if is_chat_focused():
+						submit_current_chat()
+					else:
+						open_chat_input()
+					get_viewport().set_input_as_handled()
+					return
+		elif event.physical_keycode == KEY_ESCAPE:
+			if is_chat_focused():
+				close_chat_input()
+				get_viewport().set_input_as_handled()
+				return
+
 func _unhandled_input(event: InputEvent) -> void:
 	if override_active:
 		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_R or event.physical_keycode == KEY_SPACE):
@@ -1287,6 +1305,11 @@ func set_phase_presentation(phase: String, day_num: int = 1) -> void:
 		chase_hud_box.visible = dev_mode_enabled
 		dist_warning.text = "STATUS: CONTAINMENT BREACH — SURVIVE & RUN!"
 		dist_warning.modulate = Color(1.0, 0.25, 0.25)
+
+	var net_mgr = get_node_or_null("/root/NetworkManager")
+	if net_mgr and net_mgr.get("is_multiplayer_active") == true:
+		if mp_chat_panel:
+			mp_chat_panel.visible = true
 
 func update_work_objectives(
 	spills: int,
@@ -2982,11 +3005,17 @@ func _on_chat_text_submitted(txt: String) -> void:
 		var net_mgr = get_node_or_null("/root/NetworkManager")
 		if net_mgr and net_mgr.get("is_multiplayer_active") == true:
 			var sender = str(net_mgr.get("local_player_name"))
+			if sender.strip_edges() == "":
+				sender = "Janitor"
 			if net_mgr.has_method("send_chat_message"):
 				net_mgr.send_chat_message(sender, msg, false)
 			else:
 				net_mgr.rpc("rpc_send_chat", sender, msg, false)
 	close_chat_input()
+
+func submit_current_chat() -> void:
+	if mp_chat_input:
+		_on_chat_text_submitted(mp_chat_input.text)
 
 func add_chat_message(sender: String, message: String, is_system: bool = false) -> void:
 	if not mp_chat_vbox:
@@ -3031,7 +3060,12 @@ func close_chat_input() -> void:
 	if mp_chat_input:
 		mp_chat_input.text = ""
 		mp_chat_input.release_focus()
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	var main_node = get_tree().root.find_child("Main", true, false)
+	var is_spec = main_node and main_node.get("is_spectating") == true
+	if game_hud and game_hud.visible and not is_spec:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func toggle_chat_input() -> void:
 	if is_chat_focused():
